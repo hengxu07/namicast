@@ -59,7 +59,7 @@ async def fetch_surf_data(lat: float, lng: float) -> dict:
     if cached:
         return cached
 
-    params = "waveHeight,wavePeriod,windSpeed,windDirection,waterTemperature,swellHeight,swellPeriod,swellDirection,secondarySwellHeight,secondarySwellPeriod,secondarySwellDirection,windWaveHeight,windWavePeriod,windWaveDirection"
+    params = "waveHeight,wavePeriod,windSpeed,windDirection,waterTemperature,swellHeight,swellPeriod,swellDirection,secondarySwellHeight,secondarySwellPeriod,secondarySwellDirection,windWaveHeight,windWavePeriod,windWaveDirection,tideHeight"
     url = "https://api.stormglass.io/v2/weather/point"
 
     async with httpx.AsyncClient() as client:
@@ -122,6 +122,7 @@ async def fetch_surf_data(lat: float, lng: float) -> dict:
         "windSpeed": round(get_val("windSpeed") * 2.237, 1),
         "windDirection": degrees_to_direction(get_val("windDirection")),
         "waterTemp": round(get_val("waterTemperature") * 9/5 + 32, 1),
+        "tideHeight": round(get_val("tideHeight"), 1),  # 加这行
         "swells": swells,
         "time": current["time"]
     }

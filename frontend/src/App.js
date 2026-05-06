@@ -229,6 +229,10 @@ function App() {
                 <div style={s.metricValue}>{convert.height(result.conditions.waveHeight)}</div>
               </div>
               <div style={s.metric}>
+                <div style={s.metricLabel}>Tide</div>
+                <div style={s.metricValue}>{result.conditions.tideHeight} <span style={s.metricUnit}>m</span></div>
+              </div>
+              <div style={s.metric}>
                 <div style={s.metricLabel}>Period</div>
                 <div style={s.metricValue}>{result.conditions.wavePeriod} <span style={s.metricUnit}>sec</span></div>
               </div>
@@ -305,7 +309,7 @@ const s = {
   scoreLabel: { fontSize: '13px', color: '#378ADD', marginTop: '4px' },
   verdict: { padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: '500' },
   summary: { fontSize: '13px', color: '#185FA5', lineHeight: '1.6', marginBottom: '16px' },
-  metrics: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' },
+  metrics: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px', marginBottom: '16px' },
   metric: { background: '#E6F1FB', borderRadius: '10px', padding: '12px' },
   metricLabel: { fontSize: '11px', color: '#378ADD', marginBottom: '4px' },
   metricValue: { fontSize: '18px', fontWeight: '500', color: '#042C53' },
