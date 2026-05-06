@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Database
+*.db
+
+# Mac
+.DS_Store
+
+# Node
+frontend/node_modules/
+frontend/build/
+
+# Test files
+test-files/
+*.pdf
+*.txt
