@@ -2,6 +2,7 @@ import os
 import httpx
 import anthropic
 import json
+import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone, timedelta
@@ -15,6 +16,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+logger = logging.getLogger(__name__)
 
 # Simple in-memory cache
 _cache = {}
@@ -58,7 +61,7 @@ async def fetch_surf_data(lat: float, lng: float) -> dict:
     hours = get_cached(cache_key + "_hours")
 
     if not hours:
-        params = "waveHeight,wavePeriod,windSpeed,windDirection,waterTemperature,swellHeight,swellPeriod,swellDirection,secondarySwellHeight,secondarySwellPeriod,secondarySwellDirection,windWaveHeight,windWavePeriod,windWaveDirection,tideHeight"
+        params = "waveHeight,wavePeriod,windSpeed,windDirection,waterTemperature,swellHeight,swellPeriod,swellDirection,secondarySwellHeight,secondarySwellPeriod,secondarySwellDirection,windWaveHeight,windWavePeriod,windWaveDirection,seaLevel"
         url = "https://api.stormglass.io/v2/weather/point"
 
         async with httpx.AsyncClient() as client:
@@ -69,7 +72,9 @@ async def fetch_surf_data(lat: float, lng: float) -> dict:
                 timeout=10.0
             )
 
+
         if response.status_code != 200:
+            logger.error(f"Stormglass error: {response.status_code} - {response.text}")
             raise HTTPException(status_code=502, detail="Failed to fetch surf data")
 
         hours = response.json()["hours"]
@@ -118,7 +123,7 @@ async def fetch_surf_data(lat: float, lng: float) -> dict:
         "windSpeed": round(get_val("windSpeed") * 2.237, 1),
         "windDirection": degrees_to_direction(get_val("windDirection")),
         "waterTemp": round(get_val("waterTemperature") * 9/5 + 32, 1),
-        "tideHeight": round(get_val("tideHeight"), 1),
+        "tideHeight": round(get_val("seaLevel"), 1),
         "swells": swells,
         "time": current["time"]
     }
