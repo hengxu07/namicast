@@ -55,29 +55,35 @@ def degrees_to_direction(degrees: float) -> str:
 async def fetch_surf_data(lat: float, lng: float) -> dict:
     """Fetch surf conditions from Stormglass API."""
     cache_key = get_cache_key(lat, lng)
+
+    # Check processed data cache first
     cached = get_cached(cache_key)
     if cached:
         return cached
 
-    params = "waveHeight,wavePeriod,windSpeed,windDirection,waterTemperature,swellHeight,swellPeriod,swellDirection,secondarySwellHeight,secondarySwellPeriod,secondarySwellDirection,windWaveHeight,windWavePeriod,windWaveDirection,tideHeight"
-    url = "https://api.stormglass.io/v2/weather/point"
+    # Check if raw hours are already cached (from /sessions call)
+    hours = get_cached(cache_key + "_hours")
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            url,
-            params={"lat": lat, "lng": lng, "params": params},
-            headers={"Authorization": STORMGLASS_KEY},
-            timeout=10.0
-        )
+    if not hours:
+        # Fetch from Stormglass only if not cached
+        params = "waveHeight,wavePeriod,windSpeed,windDirection,waterTemperature,swellHeight,swellPeriod,swellDirection,secondarySwellHeight,secondarySwellPeriod,secondarySwellDirection,windWaveHeight,windWavePeriod,windWaveDirection,tideHeight"
+        url = "https://api.stormglass.io/v2/weather/point"
 
-    if response.status_code != 200:
-        raise HTTPException(status_code=502, detail="Failed to fetch surf data")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                url,
+                params={"lat": lat, "lng": lng, "params": params},
+                headers={"Authorization": STORMGLASS_KEY},
+                timeout=10.0
+            )
 
-    data = response.json()
-    hours = data["hours"]
-    set_cache(cache_key + "_hours", hours)  # 加这行，缓存原始hours
+        if response.status_code != 200:
+            raise HTTPException(status_code=502, detail="Failed to fetch surf data")
 
+        hours = response.json()["hours"]
+        set_cache(cache_key + "_hours", hours)
 
+    # Process hours into current conditions
     now = datetime.now(timezone.utc)
     current = None
     for hour in hours:
