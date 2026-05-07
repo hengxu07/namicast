@@ -75,6 +75,8 @@ async def fetch_surf_data(lat: float, lng: float) -> dict:
 
     data = response.json()
     hours = data["hours"]
+    set_cache(cache_key + "_hours", hours)  # 加这行，缓存原始hours
+
 
     now = datetime.now(timezone.utc)
     current = None
@@ -187,3 +189,98 @@ async def get_forecast(
         "analysis": analysis,
         "location": {"lat": lat, "lng": lng}
     }
+
+@app.get("/sessions")
+async def get_sessions(
+    lat: float,
+    lng: float,
+    board: str = "longboard",
+    skill: str = "intermediate"
+):
+    """Get surf forecast broken down by session time slots for today."""
+    
+    cache_key = get_cache_key(lat, lng)
+    cached_hours = get_cached(cache_key + "_hours")
+    
+    if not cached_hours:
+        params = "waveHeight,wavePeriod,windSpeed,windDirection,waterTemperature,swellHeight,swellPeriod,swellDirection,secondarySwellHeight,secondarySwellPeriod,secondarySwellDirection,windWaveHeight,windWavePeriod,windWaveDirection"
+        url = "https://api.stormglass.io/v2/weather/point"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                url,
+                params={"lat": lat, "lng": lng, "params": params},
+                headers={"Authorization": STORMGLASS_KEY},
+                timeout=10.0
+            )
+
+        if response.status_code != 200:
+            raise HTTPException(status_code=502, detail="Failed to fetch surf data")
+
+        cached_hours = response.json()["hours"]
+        set_cache(cache_key + "_hours", cached_hours)
+
+    # Define session time slots (local hour ranges)
+    sessions_def = [
+        {"name": "Dawn patrol", "time": "5am–8am",  "hours": [5, 6, 7]},
+        {"name": "Morning",     "time": "8am–12pm", "hours": [8, 9, 10, 11]},
+        {"name": "Afternoon",   "time": "12pm–5pm", "hours": [12, 13, 14, 15, 16]},
+        {"name": "Evening",     "time": "5pm–8pm",  "hours": [17, 18, 19]},
+    ]
+
+    def get_avg(hours_data, key):
+        vals = [h.get(key, {}).get("sg", 0) or 0 for h in hours_data]
+        return sum(vals) / len(vals) if vals else 0
+
+    now = datetime.now(timezone.utc)
+    sessions = []
+
+    for session in sessions_def:
+        # Filter hours matching this session's time slots
+        session_hours = []
+        for hour in cached_hours:
+            hour_time = datetime.fromisoformat(hour["time"].replace("+00:00", "+00:00"))
+            # Only today's hours
+            if hour_time.date() != now.date():
+                continue
+            if hour_time.hour in session["hours"]:
+                session_hours.append(hour)
+
+        if not session_hours:
+            continue
+
+        # Average the conditions across the session
+        avg_wave = meters_to_feet(get_avg(session_hours, "waveHeight"))
+        avg_period = round(get_avg(session_hours, "wavePeriod"), 1)
+        avg_wind = round(get_avg(session_hours, "windSpeed") * 2.237, 1)
+        avg_wind_dir = degrees_to_direction(get_avg(session_hours, "windDirection"))
+
+        conditions = {
+            "waveHeight": avg_wave,
+            "wavePeriod": avg_period,
+            "windSpeed": avg_wind,
+            "windDirection": avg_wind_dir,
+            "waterTemp": round(get_avg(session_hours, "waterTemperature") * 9/5 + 32, 1),
+            "swells": [],
+        }
+
+        analysis = analyze_conditions(conditions, board, skill)
+
+        sessions.append({
+            "name": session["name"],
+            "time": session["time"],
+            "score": analysis["score"],
+            "verdict": analysis["verdict"],
+            "waveHeight": avg_wave,
+            "wavePeriod": avg_period,
+            "windSpeed": avg_wind,
+            "windDirection": avg_wind_dir,
+            "best": False
+        })
+
+    # Mark the best session
+    if sessions:
+        best = max(sessions, key=lambda s: s["score"])
+        best["best"] = True
+
+    return {"sessions": sessions, "location": {"lat": lat, "lng": lng}}

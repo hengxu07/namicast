@@ -71,20 +71,33 @@ function App() {
     }
   };
 
-  const handleCheck = async (spot) => {
+const handleCheck = async (spot) => {
     setLoading(true);
     setError('');
     setResult(null);
     try {
-      const res = await axios.get(`${API}/forecast`, {
-        params: {
-          lat: spot.lat,
-          lng: spot.lng,
-          board: board.toLowerCase(),
-          skill: skill.toLowerCase(),
-        }
+      const [forecastRes, sessionsRes] = await Promise.all([
+        axios.get(`${API}/forecast`, {
+          params: {
+            lat: spot.lat,
+            lng: spot.lng,
+            board: board.toLowerCase(),
+            skill: skill.toLowerCase(),
+          }
+        }),
+        axios.get(`${API}/sessions`, {
+          params: {
+            lat: spot.lat,
+            lng: spot.lng,
+            board: board.toLowerCase(),
+            skill: skill.toLowerCase(),
+          }
+        })
+      ]);
+      setResult({
+        ...forecastRes.data,
+        forecast: sessionsRes.data.sessions
       });
-      setResult(res.data);
       setSelectedSpot(spot);
     } catch (err) {
       setError('Failed to fetch forecast. Please try again.');
@@ -316,7 +329,7 @@ const s = {
   scoreLabel: { fontSize: '13px', color: '#378ADD', marginTop: '4px' },
   verdict: { padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: '500' },
   summary: { fontSize: '13px', color: '#185FA5', lineHeight: '1.6', marginBottom: '16px' },
-metrics: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px', marginBottom: '16px' },
+  metrics: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px', marginBottom: '16px' },
   metric: { background: '#E6F1FB', borderRadius: '10px', padding: '12px' },
   metricLabel: { fontSize: '11px', color: '#378ADD', marginBottom: '4px' },
   metricValue: { fontSize: '18px', fontWeight: '500', color: '#042C53' },
