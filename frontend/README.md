@@ -1,70 +1,61 @@
-# Getting Started with Create React App
+# 🌊 Namicast
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+> AI-powered surf forecast app — personalized session recommendations for any spot worldwide.
 
-## Available Scripts
+## Live Demo
+**Frontend:** [namicast.vercel.app](https://namicast.vercel.app)  
+**API:** [web-production-6c38f.up.railway.app/docs](https://web-production-6c38f.up.railway.app/docs)
 
-In the project directory, you can run:
+## Features
+- 🔍 **Global spot search** — search any surf location worldwide via geocoding
+- 🤖 **AI session analysis** — Claude AI analyzes conditions based on board type and skill level
+- 💨 **Wind & spot analysis** — offshore/onshore detection and spot-specific insights
+- 🏄 **Spot info** — break type, best swell/wind/tide, hazards, and local knowledge
+- 📊 **Swell breakdown** — primary, secondary, and wind swell components
+- 📅 **5-day forecast** — rule-based daily scoring for trip planning
+- ⏰ **Today's sessions** — Dawn patrol, Morning, Afternoon, Evening comparison
+- ⚙️ **Unit preferences** — ft/m, °F/°C, mph/km/h
 
-### `npm start`
+## Tech Stack
+| Layer | Tech |
+|---|---|
+| Backend | Python, FastAPI |
+| AI | Claude AI (Anthropic) |
+| Weather Data | Stormglass Marine API |
+| Geocoding | OpenStreetMap Nominatim |
+| Frontend | React |
+| Deployment | Railway (API) + Vercel (Frontend) |
+| Caching | In-memory cache (1hr TTL) |
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## Local Setup
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### Backend
+```bash
+git clone https://github.com/hengxu07/namicast.git
+cd namicast
+pip install -r requirements.txt
+export STORMGLASS_KEY="your-key"
+export ANTHROPIC_API_KEY="your-key"
+uvicorn api:app --reload
+```
 
-### `npm test`
+### Frontend
+```bash
+cd frontend
+npm install
+npm start
+```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Mock Mode (no API calls)
+```bash
+export MOCK_MODE=true
+export ANTHROPIC_API_KEY="your-key"
+uvicorn api:app --reload
+```
 
-### `npm run build`
-
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+## API Endpoints
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/forecast` | Current conditions + AI analysis + today's sessions |
+| GET | `/forecast/daily` | 5-day forecast |
+| GET | `/spot-info` | Spot type, hazards, best conditions |
