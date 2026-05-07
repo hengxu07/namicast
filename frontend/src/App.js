@@ -71,7 +71,7 @@ function App() {
     }
   };
 
-const handleCheck = async (spot) => {
+  const handleCheck = async (spot) => {
     setLoading(true);
     setError('');
     setResult(null);
@@ -82,6 +82,7 @@ const handleCheck = async (spot) => {
           lng: spot.lng,
           board: board.toLowerCase(),
           skill: skill.toLowerCase(),
+          spot_name: spot.name,
         }
       });
       setResult(res.data);
@@ -224,6 +225,18 @@ const handleCheck = async (spot) => {
 
             <p style={s.summary}>{result.analysis.summary}</p>
 
+            {result.analysis.wind_analysis && (
+              <div style={s.analysisTag}>
+                💨 {result.analysis.wind_analysis}
+              </div>
+            )}
+            {result.analysis.spot_analysis && (
+              <div style={s.analysisTag}>
+                🌊 {result.analysis.spot_analysis}
+              </div>
+            )}
+
+
             <div style={s.metrics}>
               <div style={s.metric}>
                 <div style={s.metricLabel}>Wave height</div>
@@ -288,6 +301,7 @@ const handleCheck = async (spot) => {
 
 const s = {
   app: { background: '#E6F1FB', minHeight: '100vh', padding: '24px', fontFamily: 'sans-serif' },
+  analysisTag: { fontSize: '13px', color: '#185FA5', background: '#E6F1FB', padding: '8px 12px', borderRadius: '8px', marginBottom: '8px', lineHeight: '1.5' },
   header: { display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' },
   logo: { fontSize: '22px', fontWeight: '500', color: '#042C53', whiteSpace: 'nowrap' },
   logoBlue: { color: '#378ADD' },

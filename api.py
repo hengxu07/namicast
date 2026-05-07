@@ -137,12 +137,17 @@ def analyze_conditions(conditions: dict, board_type: str, skill_level: str) -> d
     for swell in conditions.get("swells", []):
         swell_text += f"\n- {swell['type']} swell: {swell['height']}ft @ {swell['period']}s {swell['direction']}"
 
-    prompt = f"""You are an expert surf coach analyzing conditions for a surfer.
+    prompt = f"""You are an expert surf coach analyzing conditions at a specific surf spot.
+
+Surf spot: {spot_name}
+Spot type: {spot_type}
 
 Current conditions:
 - Total wave height: {conditions['waveHeight']} ft
 - Wind: {conditions['windSpeed']} mph {conditions['windDirection']}
 - Water temperature: {conditions['waterTemp']}°F
+- Tide: {conditions.get('tideHeight', 0)} m
+
 
 Swell breakdown:{swell_text if swell_text else ' No significant swells detected'}
 
@@ -150,11 +155,18 @@ Surfer profile:
 - Board: {board_type}
 - Skill level: {skill_level}
 
+In your analysis, specifically address:
+1. Whether the wind is offshore, onshore, or cross-shore for this spot, and how it affects wave quality
+2. How the spot type ({spot_type}) interacts with current swell direction and period
+3. Which swell direction is ideal for this spot and whether current swells are optimal
+
 Provide a surf report in JSON format only, no other text:
 {{
     "score": <1-10 integer>,
     "verdict": "<one of: Excellent, Good, Fair, Poor>",
-    "summary": "<2-3 sentence summary of conditions>",
+    "summary": "<2-3 sentence summary including wind effect and spot characteristics>",
+    "wind_analysis": "<1 sentence: is wind offshore/onshore/cross-shore and how it affects this spot>",
+    "spot_analysis": "<1 sentence: how spot type affects today's conditions>",
     "best_time": "<when today is best to surf>",
     "wetsuit": "<wetsuit recommendation>",
     "tips": ["<tip 1>", "<tip 2>", "<tip 3>"]
@@ -170,15 +182,38 @@ Provide a surf report in JSON format only, no other text:
     clean = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(clean)
 
+def get_spot_type(spot_name: str) -> str:
+    """Use Claude to determine surf spot type."""
+    response = anthropic_client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=100,
+        messages=[{
+            "role": "user",
+            "content": f"""What type of surf break is {spot_name}? 
+Reply with ONLY one of: point break, beach break, reef break, river mouth.
+If unknown, reply: beach break"""
+        }]
+    )
+    return response.content[0].text.strip().lower()
+
 @app.get("/forecast")
 async def get_forecast(
     lat: float,
     lng: float,
     board: str = "longboard",
-    skill: str = "intermediate"
+    skill: str = "intermediate",
+    spot_name: str = "Unknown"
 ):
-    """Get surf forecast with AI analysis and daily session breakdown."""
     conditions = await fetch_surf_data(lat, lng)
+
+    """Get surf forecast with AI analysis and daily session breakdown."""
+    # Get spot type (cache it too)
+    cache_key = get_cache_key(lat, lng)
+    spot_type = get_cached(cache_key + "_spot_type")
+    if not spot_type:
+        spot_type = get_spot_type(spot_name)
+        set_cache(cache_key + "_spot_type", spot_type)
+
     analysis = analyze_conditions(conditions, board, skill)
 
     cache_key = get_cache_key(lat, lng)
