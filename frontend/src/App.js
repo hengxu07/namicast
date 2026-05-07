@@ -76,28 +76,15 @@ const handleCheck = async (spot) => {
     setError('');
     setResult(null);
     try {
-      const [forecastRes, sessionsRes] = await Promise.all([
-        axios.get(`${API}/forecast`, {
-          params: {
-            lat: spot.lat,
-            lng: spot.lng,
-            board: board.toLowerCase(),
-            skill: skill.toLowerCase(),
-          }
-        }),
-        axios.get(`${API}/sessions`, {
-          params: {
-            lat: spot.lat,
-            lng: spot.lng,
-            board: board.toLowerCase(),
-            skill: skill.toLowerCase(),
-          }
-        })
-      ]);
-      setResult({
-        ...forecastRes.data,
-        forecast: sessionsRes.data.sessions
+      const res = await axios.get(`${API}/forecast`, {
+        params: {
+          lat: spot.lat,
+          lng: spot.lng,
+          board: board.toLowerCase(),
+          skill: skill.toLowerCase(),
+        }
       });
+      setResult(res.data);
       setSelectedSpot(spot);
     } catch (err) {
       setError('Failed to fetch forecast. Please try again.');
