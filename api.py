@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone, timedelta
 
 app = FastAPI(title="Namicast API", description="AI-powered surf forecast")
+MOCK_MODE = os.environ.get("MOCK_MODE", "false").lower() == "true"
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,6 +53,64 @@ def degrees_to_direction(degrees: float) -> str:
 
 async def fetch_surf_data(lat: float, lng: float) -> dict:
     """Fetch surf conditions from Stormglass API."""
+
+    if MOCK_MODE:
+        mock_hours = [
+            {
+                "time": datetime.now(timezone.utc).isoformat(),
+                "waveHeight": {"sg": 1.2},
+                "wavePeriod": {"sg": 12.0},
+                "windSpeed": {"sg": 3.5},
+                "windDirection": {"sg": 270},
+                "waterTemperature": {"sg": 18.0},
+                "swellHeight": {"sg": 1.0},
+                "swellPeriod": {"sg": 12.0},
+                "swellDirection": {"sg": 225},
+                "secondarySwellHeight": {"sg": 0.4},
+                "secondarySwellPeriod": {"sg": 8.0},
+                "secondarySwellDirection": {"sg": 270},
+                "windWaveHeight": {"sg": 0.3},
+                "windWavePeriod": {"sg": 4.0},
+                "windWaveDirection": {"sg": 260},
+                "seaLevel": {"sg": 0.5},
+            }
+        ]
+        cache_key = get_cache_key(lat, lng)
+        set_cache(cache_key + "_hours", mock_hours)
+        # fall through to process mock hours
+        hours = mock_hours
+        current = hours[0]
+
+        def get_val(key):
+            return current.get(key, {}).get("sg", 0) or 0
+
+        swells = []
+        if get_val("swellHeight") > 0.1:
+            swells.append({
+                "type": "Primary",
+                "height": meters_to_feet(get_val("swellHeight")),
+                "period": round(get_val("swellPeriod"), 1),
+                "direction": degrees_to_direction(get_val("swellDirection"))
+            })
+        if get_val("secondarySwellHeight") > 0.1:
+            swells.append({
+                "type": "Secondary",
+                "height": meters_to_feet(get_val("secondarySwellHeight")),
+                "period": round(get_val("secondarySwellPeriod"), 1),
+                "direction": degrees_to_direction(get_val("secondarySwellDirection"))
+            })
+
+        return {
+            "waveHeight": meters_to_feet(get_val("waveHeight")),
+            "wavePeriod": round(get_val("wavePeriod"), 1),
+            "windSpeed": round(get_val("windSpeed") * 2.237, 1),
+            "windDirection": degrees_to_direction(get_val("windDirection")),
+            "waterTemp": round(get_val("waterTemperature") * 9/5 + 32, 1),
+            "tideHeight": round(get_val("seaLevel"), 1),
+            "swells": swells,
+            "time": current["time"]
+        }
+    
     cache_key = get_cache_key(lat, lng)
 
     cached = get_cached(cache_key)
@@ -131,7 +190,7 @@ async def fetch_surf_data(lat: float, lng: float) -> dict:
     set_cache(cache_key, result)
     return result
 
-def analyze_conditions(conditions: dict, board_type: str, skill_level: str) -> dict:
+def analyze_conditions(conditions: dict, board_type: str, skill_level: str, spot_name: str = "Unknown", spot_type: str = "beach break") -> dict:
     """Use Claude to analyze surf conditions and give recommendations."""
     swell_text = ""
     for swell in conditions.get("swells", []):
@@ -195,6 +254,44 @@ If unknown, reply: beach break"""
         }]
     )
     return response.content[0].text.strip().lower()
+
+@app.get("/spot-info")
+async def get_spot_info(spot_name: str):
+    """Get general information about a surf spot."""
+    cache_key = f"spot_info_{spot_name.lower().replace(' ', '_')}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
+    response = anthropic_client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=512,
+        messages=[{
+            "role": "user",
+            "content": f"""Provide information about the surf spot: {spot_name}
+
+Return ONLY a JSON object, no other text:
+{{
+    "type": "<point break/beach break/reef break/river mouth>",
+    "difficulty": "<beginner/intermediate/advanced/expert>",
+    "best_season": "<best months or season>",
+    "best_swell": "<ideal swell direction and size>",
+    "best_wind": "<ideal wind direction>",
+    "best_tide": "<ideal tide>",
+    "hazards": "<main hazards>",
+    "description": "<2 sentence description of the spot>",
+    "known_for": "<what this spot is famous for>"
+}}
+
+If you don't know this specific spot, provide best estimates based on its location."""
+        }]
+    )
+
+    raw = response.content[0].text
+    clean = raw.replace("```json", "").replace("```", "").strip()
+    result = json.loads(clean)
+    set_cache(cache_key, result)
+    return result
 
 @app.get("/forecast")
 async def get_forecast(

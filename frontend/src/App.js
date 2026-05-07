@@ -2,7 +2,7 @@ import { useState } from 'react';
 import axios from 'axios';
 import DailyForecast from './components/DailyForecast';
 
-const API = 'https://web-production-6c38f.up.railway.app';
+const API = process.env.REACT_APP_API_URL;
 
 const SPOTS = [
   { name: 'San Onofre', lat: 33.37, lng: -117.57 },
@@ -76,16 +76,24 @@ function App() {
     setError('');
     setResult(null);
     try {
-      const res = await axios.get(`${API}/forecast`, {
-        params: {
-          lat: spot.lat,
-          lng: spot.lng,
-          board: board.toLowerCase(),
-          skill: skill.toLowerCase(),
-          spot_name: spot.name,
-        }
+      const [forecastRes, spotInfoRes] = await Promise.all([
+        axios.get(`${API}/forecast`, {
+          params: {
+            lat: spot.lat,
+            lng: spot.lng,
+            board: board.toLowerCase(),
+            skill: skill.toLowerCase(),
+            spot_name: spot.name,
+          }
+        }),
+        axios.get(`${API}/spot-info`, {
+          params: { spot_name: spot.name }
+        })
+      ]);
+      setResult({
+        ...forecastRes.data,
+        spotInfo: spotInfoRes.data
       });
-      setResult(res.data);
       setSelectedSpot(spot);
     } catch (err) {
       setError('Failed to fetch forecast. Please try again.');
@@ -209,6 +217,14 @@ function App() {
         <div>
           {/* Score card */}
           <div style={s.scoreCard}>
+            {result.spotInfo && (
+              <div style={s.spotInfoBar}>
+                <span style={s.spotInfoItem}>🏄 {result.spotInfo.type}</span>
+                <span style={s.spotInfoItem}>📅 Best: {result.spotInfo.best_season}</span>
+                <span style={s.spotInfoItem}>🎯 {result.spotInfo.difficulty}</span>
+                <span style={s.spotInfoItem}>⚠️ {result.spotInfo.hazards}</span>
+              </div>
+            )}
             <div style={s.scoreRow}>
               <div>
                 <div style={s.scoreBig}>{result.analysis.score}</div>
@@ -281,6 +297,30 @@ function App() {
 
           {/* Tips */}
           <div style={s.tipsCard}>
+            {result.spotInfo && (
+              <div style={s.tipsCard}>
+                <div style={s.tipsTitle}>About {selectedSpot?.name}</div>
+                <p style={s.summary}>{result.spotInfo.description}</p>
+                <div style={s.spotGrid}>
+                  <div style={s.spotGridItem}>
+                    <div style={s.metricLabel}>Best swell</div>
+                    <div style={s.spotGridValue}>{result.spotInfo.best_swell}</div>
+                  </div>
+                  <div style={s.spotGridItem}>
+                    <div style={s.metricLabel}>Best wind</div>
+                    <div style={s.spotGridValue}>{result.spotInfo.best_wind}</div>
+                  </div>
+                  <div style={s.spotGridItem}>
+                    <div style={s.metricLabel}>Best tide</div>
+                    <div style={s.spotGridValue}>{result.spotInfo.best_tide}</div>
+                  </div>
+                  <div style={s.spotGridItem}>
+                    <div style={s.metricLabel}>Known for</div>
+                    <div style={s.spotGridValue}>{result.spotInfo.known_for}</div>
+                  </div>
+                </div>
+              </div>
+            )}
             <div style={s.tipsTitle}>Tips for your session</div>
             {result.analysis.tips.map((tip, i) => (
               <div key={i} style={s.tip}>
@@ -335,6 +375,11 @@ const s = {
   metricLabel: { fontSize: '11px', color: '#378ADD', marginBottom: '4px' },
   metricValue: { fontSize: '18px', fontWeight: '500', color: '#042C53' },
   metricUnit: { fontSize: '11px', color: '#185FA5' },
+  spotInfoBar: { display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px', paddingBottom: '16px', borderBottom: '0.5px solid #E6F1FB' },
+  spotInfoItem: { fontSize: '12px', color: '#185FA5', background: '#E6F1FB', padding: '4px 10px', borderRadius: '20px' },
+  spotGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginTop: '12px' },
+  spotGridItem: { background: '#E6F1FB', borderRadius: '8px', padding: '10px' },
+  spotGridValue: { fontSize: '13px', color: '#042C53', fontWeight: '500', marginTop: '4px' },
   swellSection: { marginTop: '16px', paddingTop: '16px', borderTop: '0.5px solid #B5D4F4' },
   swellRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid #E6F1FB' },
   swellType: { fontSize: '12px', color: '#378ADD', fontWeight: '500' },
