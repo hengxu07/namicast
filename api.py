@@ -3,9 +3,12 @@ import httpx
 import anthropic
 import json
 import logging
+import random
+from collections import defaultdict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone, timedelta
+
 
 app = FastAPI(title="Namicast API", description="AI-powered surf forecast")
 MOCK_MODE = os.environ.get("MOCK_MODE", "false").lower() == "true"
@@ -54,33 +57,71 @@ def degrees_to_direction(degrees: float) -> str:
 async def fetch_surf_data(lat: float, lng: float) -> dict:
     """Fetch surf conditions from Stormglass API."""
 
-    if MOCK_MODE:
-        mock_hours = [
-            {
-                "time": datetime.now(timezone.utc).isoformat(),
-                "waveHeight": {"sg": 1.2},
-                "wavePeriod": {"sg": 12.0},
-                "windSpeed": {"sg": 3.5},
-                "windDirection": {"sg": 270},
-                "waterTemperature": {"sg": 18.0},
-                "swellHeight": {"sg": 1.0},
-                "swellPeriod": {"sg": 12.0},
-                "swellDirection": {"sg": 225},
-                "secondarySwellHeight": {"sg": 0.4},
-                "secondarySwellPeriod": {"sg": 8.0},
-                "secondarySwellDirection": {"sg": 270},
-                "windWaveHeight": {"sg": 0.3},
-                "windWavePeriod": {"sg": 4.0},
-                "windWaveDirection": {"sg": 260},
-                "seaLevel": {"sg": 0.5},
-            }
-        ]
-        cache_key = get_cache_key(lat, lng)
-        set_cache(cache_key + "_hours", mock_hours)
-        # fall through to process mock hours
-        hours = mock_hours
-        current = hours[0]
+    cache_key = get_cache_key(lat, lng)
 
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
+    hours = get_cached(cache_key + "_hours")
+
+    if not hours:
+        if MOCK_MODE:
+            import random
+            mock_hours = []
+            base = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            for d in range(5):
+                for h in range(24):
+                    mock_hours.append({
+                        "time": (base + timedelta(days=d, hours=h)).isoformat(),
+                        "waveHeight": {"sg": random.uniform(0.5, 2.0)},
+                        "wavePeriod": {"sg": random.uniform(6, 14)},
+                        "windSpeed": {"sg": random.uniform(1, 8)},
+                        "windDirection": {"sg": random.uniform(0, 360)},
+                        "waterTemperature": {"sg": 18.0},
+                        "seaLevel": {"sg": random.uniform(-0.5, 1.0)},
+                        "swellHeight": {"sg": random.uniform(0.3, 1.5)},
+                        "swellPeriod": {"sg": random.uniform(8, 14)},
+                        "swellDirection": {"sg": 225},
+                        "secondarySwellHeight": {"sg": random.uniform(0.1, 0.5)},
+                        "secondarySwellPeriod": {"sg": random.uniform(5, 8)},
+                        "secondarySwellDirection": {"sg": 270},
+                        "windWaveHeight": {"sg": random.uniform(0.1, 0.4)},
+                        "windWavePeriod": {"sg": random.uniform(3, 5)},
+                        "windWaveDirection": {"sg": 260},
+                    })
+            hours = mock_hours
+            set_cache(cache_key + "_hours", hours)
+        else:
+            params = "waveHeight,wavePeriod,windSpeed,windDirection,waterTemperature,swellHeight,swellPeriod,swellDirection,secondarySwellHeight,secondarySwellPeriod,secondarySwellDirection,windWaveHeight,windWavePeriod,windWaveDirection,seaLevel"
+            url = "https://api.stormglass.io/v2/weather/point"
+
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    url,
+                    params={"lat": lat, "lng": lng, "params": params},
+                    headers={"Authorization": STORMGLASS_KEY},
+                    timeout=10.0
+                )
+
+            if response.status_code != 200:
+                logger.error(f"Stormglass error: {response.status_code} - {response.text}")
+                raise HTTPException(status_code=502, detail="Failed to fetch surf data")
+
+            hours = response.json()["hours"]
+            set_cache(cache_key + "_hours", hours)
+
+    # Process hours into current conditions
+    now = datetime.now(timezone.utc)
+    current = None
+    for hour in hours:
+        hour_time = datetime.fromisoformat(hour["time"].replace("+00:00", "+00:00"))
+        if hour_time >= now:
+            current = hour
+            break
+
+    if not current:
+        current = hours[0]
         def get_val(key):
             return current.get(key, {}).get("sg", 0) or 0
 
@@ -379,3 +420,128 @@ async def get_forecast(
         "location": {"lat": lat, "lng": lng},
         "forecast": sessions
     }
+
+def simple_score(wave_height: float, wind_speed: float, wave_period: float) -> dict:
+    """Simple scoring without AI for daily forecast overview."""
+    score = 5
+    # Wave height (ideal 3-8ft)
+    if wave_height < 1: score -= 2
+    elif wave_height < 2: score -= 1
+    elif wave_height > 10: score -= 2
+    elif 3 <= wave_height <= 8: score += 1
+
+    # Period (higher is better)
+    if wave_period > 12: score += 2
+    elif wave_period > 8: score += 1
+    elif wave_period < 6: score -= 2
+
+    # Wind (lower is better)
+    if wind_speed < 5: score += 1
+    elif wind_speed > 15: score -= 2
+    elif wind_speed > 10: score -= 1
+
+    score = max(1, min(10, score))
+    if score >= 8: verdict = "Excellent"
+    elif score >= 6: verdict = "Good"
+    elif score >= 4: verdict = "Fair"
+    else: verdict = "Poor"
+
+    return {"score": score, "verdict": verdict}
+
+@app.get("/forecast/daily")
+async def get_daily_forecast(
+    lat: float,
+    lng: float,
+    board: str = "longboard",
+    skill: str = "intermediate",
+    days: int = 5
+):
+    """Get multi-day surf forecast."""
+    cache_key = get_cache_key(lat, lng)
+    hours = get_cached(cache_key + "_hours")
+
+    if not hours:
+        if MOCK_MODE:
+            # Generate mock hours for 5 days
+            hours = []
+            base = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0)
+            for d in range(5):
+                for h in range(24):
+
+                    hours.append({
+                        "time": (base + timedelta(days=d, hours=h)).isoformat(),
+                        "waveHeight": {"sg": random.uniform(0.5, 2.0)},
+                        "wavePeriod": {"sg": random.uniform(6, 14)},
+                        "windSpeed": {"sg": random.uniform(1, 8)},
+                        "windDirection": {"sg": random.uniform(0, 360)},
+                        "waterTemperature": {"sg": 18.0},
+                        "seaLevel": {"sg": random.uniform(-0.5, 1.0)},
+                        "swellHeight": {"sg": random.uniform(0.3, 1.5)},
+                        "swellPeriod": {"sg": random.uniform(8, 14)},
+                        "swellDirection": {"sg": 225},
+                        "secondarySwellHeight": {"sg": random.uniform(0.1, 0.5)},
+                        "secondarySwellPeriod": {"sg": random.uniform(5, 8)},
+                        "secondarySwellDirection": {"sg": 270},
+                        "windWaveHeight": {"sg": random.uniform(0.1, 0.4)},
+                        "windWavePeriod": {"sg": random.uniform(3, 5)},
+                        "windWaveDirection": {"sg": 260},
+                    })
+            set_cache(cache_key + "_hours", hours)
+        else:
+            # Fetch from Stormglass
+            params = "waveHeight,wavePeriod,windSpeed,windDirection,waterTemperature,swellHeight,swellPeriod,swellDirection,secondarySwellHeight,secondarySwellPeriod,secondarySwellDirection,windWaveHeight,windWavePeriod,windWaveDirection,seaLevel"
+            url = "https://api.stormglass.io/v2/weather/point"
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    url,
+                    params={"lat": lat, "lng": lng, "params": params},
+                    headers={"Authorization": STORMGLASS_KEY},
+                    timeout=10.0
+                )
+            if response.status_code != 200:
+                raise HTTPException(status_code=502, detail="Failed to fetch surf data")
+            hours = response.json()["hours"]
+            set_cache(cache_key + "_hours", hours)
+
+    def get_avg(hours_data, key):
+        vals = [h.get(key, {}).get("sg", 0) or 0 for h in hours_data]
+        return sum(vals) / len(vals) if vals else 0
+
+    # Group hours by date
+    days_map = defaultdict(list)
+    for hour in hours:
+        date = datetime.fromisoformat(hour["time"].replace("+00:00", "+00:00")).date()
+        days_map[date].append(hour)
+
+    daily = []
+    for date in sorted(days_map.keys())[:days]:
+        day_hours = days_map[date]
+        avg_wave = meters_to_feet(get_avg(day_hours, "waveHeight"))
+        avg_period = round(get_avg(day_hours, "wavePeriod"), 1)
+        avg_wind = round(get_avg(day_hours, "windSpeed") * 2.237, 1)
+        avg_wind_dir = degrees_to_direction(get_avg(day_hours, "windDirection"))
+
+        conditions = {
+            "waveHeight": avg_wave,
+            "wavePeriod": avg_period,
+            "windSpeed": avg_wind,
+            "windDirection": avg_wind_dir,
+            "waterTemp": round(get_avg(day_hours, "waterTemperature") * 9/5 + 32, 1),
+            "swells": [],
+        }
+        # analysis = analyze_conditions(conditions, board, skill)
+        analysis = simple_score(avg_wave, avg_wind, avg_period)
+
+        daily.append({
+            "date": date.isoformat(),
+            "weekday": date.strftime("%a"),
+            "score": analysis["score"],
+            "verdict": analysis["verdict"],
+            "waveHeight": avg_wave,
+            "wavePeriod": avg_period,
+            "windSpeed": avg_wind,
+            "windDirection": avg_wind_dir,
+            # "summary": analysis["summary"],
+        })
+
+    return {"daily": daily, "location": {"lat": lat, "lng": lng}}

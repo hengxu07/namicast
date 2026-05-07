@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import DailyForecast from './components/DailyForecast';
+import WeeklyForecast from './components/WeeklyForecast';
 
 const API = process.env.REACT_APP_API_URL;
 
@@ -76,7 +77,7 @@ function App() {
     setError('');
     setResult(null);
     try {
-      const [forecastRes, spotInfoRes] = await Promise.all([
+      const [forecastRes, spotInfoRes, dailyRes] = await Promise.all([
         axios.get(`${API}/forecast`, {
           params: {
             lat: spot.lat,
@@ -88,11 +89,20 @@ function App() {
         }),
         axios.get(`${API}/spot-info`, {
           params: { spot_name: spot.name }
+        }),
+        axios.get(`${API}/forecast/daily`, {
+          params: {
+            lat: spot.lat,
+            lng: spot.lng,
+            board: board.toLowerCase(),
+            skill: skill.toLowerCase(),
+          }
         })
       ]);
       setResult({
         ...forecastRes.data,
-        spotInfo: spotInfoRes.data
+        spotInfo: spotInfoRes.data,
+        daily: dailyRes.data.daily,
       });
       setSelectedSpot(spot);
     } catch (err) {
@@ -297,30 +307,6 @@ function App() {
 
           {/* Tips */}
           <div style={s.tipsCard}>
-            {result.spotInfo && (
-              <div style={s.tipsCard}>
-                <div style={s.tipsTitle}>About {selectedSpot?.name}</div>
-                <p style={s.summary}>{result.spotInfo.description}</p>
-                <div style={s.spotGrid}>
-                  <div style={s.spotGridItem}>
-                    <div style={s.metricLabel}>Best swell</div>
-                    <div style={s.spotGridValue}>{result.spotInfo.best_swell}</div>
-                  </div>
-                  <div style={s.spotGridItem}>
-                    <div style={s.metricLabel}>Best wind</div>
-                    <div style={s.spotGridValue}>{result.spotInfo.best_wind}</div>
-                  </div>
-                  <div style={s.spotGridItem}>
-                    <div style={s.metricLabel}>Best tide</div>
-                    <div style={s.spotGridValue}>{result.spotInfo.best_tide}</div>
-                  </div>
-                  <div style={s.spotGridItem}>
-                    <div style={s.metricLabel}>Known for</div>
-                    <div style={s.spotGridValue}>{result.spotInfo.known_for}</div>
-                  </div>
-                </div>
-              </div>
-            )}
             <div style={s.tipsTitle}>Tips for your session</div>
             {result.analysis.tips.map((tip, i) => (
               <div key={i} style={s.tip}>
@@ -330,9 +316,42 @@ function App() {
             ))}
           </div>
 
+          {/* 5-Day Forecast */}
+          {result.daily && (
+            <WeeklyForecast daily={result.daily} convert={convert} />
+          )}
+
+          {/* Today's sessions */}
           {result.forecast && (
             <DailyForecast forecasts={result.forecast} convert={convert} />
           )}
+
+          {/* About spot */}
+          {result.spotInfo && (
+            <div style={s.tipsCard}>
+              <div style={s.tipsTitle}>About {selectedSpot?.name}</div>
+              <p style={s.summary}>{result.spotInfo.description}</p>
+              <div style={s.spotGrid}>
+                <div style={s.spotGridItem}>
+                  <div style={s.metricLabel}>Best swell</div>
+                  <div style={s.spotGridValue}>{result.spotInfo.best_swell}</div>
+                </div>
+                <div style={s.spotGridItem}>
+                  <div style={s.metricLabel}>Best wind</div>
+                  <div style={s.spotGridValue}>{result.spotInfo.best_wind}</div>
+                </div>
+                <div style={s.spotGridItem}>
+                  <div style={s.metricLabel}>Best tide</div>
+                  <div style={s.spotGridValue}>{result.spotInfo.best_tide}</div>
+                </div>
+                <div style={s.spotGridItem}>
+                  <div style={s.metricLabel}>Known for</div>
+                  <div style={s.spotGridValue}>{result.spotInfo.known_for}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
     </div>
