@@ -56,7 +56,6 @@ def degrees_to_direction(degrees: float) -> str:
 
 async def fetch_surf_data(lat: float, lng: float) -> dict:
     """Fetch surf conditions from Stormglass API."""
-
     cache_key = get_cache_key(lat, lng)
 
     cached = get_cached(cache_key)
@@ -67,127 +66,52 @@ async def fetch_surf_data(lat: float, lng: float) -> dict:
 
     if not hours:
         if MOCK_MODE:
-            import random
             mock_hours = []
             base = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
             for d in range(5):
                 for h in range(24):
                     mock_hours.append({
                         "time": (base + timedelta(days=d, hours=h)).isoformat(),
-                        "waveHeight": {"sg": random.uniform(0.5, 2.0)},
-                        "wavePeriod": {"sg": random.uniform(6, 14)},
-                        "windSpeed": {"sg": random.uniform(1, 8)},
-                        "windDirection": {"sg": random.uniform(0, 360)},
-                        "waterTemperature": {"sg": 18.0},
-                        "seaLevel": {"sg": random.uniform(-0.5, 1.0)},
-                        "swellHeight": {"sg": random.uniform(0.3, 1.5)},
-                        "swellPeriod": {"sg": random.uniform(8, 14)},
-                        "swellDirection": {"sg": 225},
-                        "secondarySwellHeight": {"sg": random.uniform(0.1, 0.5)},
-                        "secondarySwellPeriod": {"sg": random.uniform(5, 8)},
+                        "waveHeight":            {"sg": random.uniform(0.5, 2.0)},
+                        "wavePeriod":            {"sg": random.uniform(6, 14)},
+                        "windSpeed":             {"sg": random.uniform(1, 8)},
+                        "windDirection":         {"sg": random.uniform(0, 360)},
+                        "waterTemperature":      {"sg": 18.0},
+                        "seaLevel":              {"sg": random.uniform(-0.5, 1.0)},
+                        "swellHeight":           {"sg": random.uniform(0.3, 1.5)},
+                        "swellPeriod":           {"sg": random.uniform(8, 14)},
+                        "swellDirection":        {"sg": 225},
+                        "secondarySwellHeight":  {"sg": random.uniform(0.1, 0.5)},
+                        "secondarySwellPeriod":  {"sg": random.uniform(5, 8)},
                         "secondarySwellDirection": {"sg": 270},
-                        "windWaveHeight": {"sg": random.uniform(0.1, 0.4)},
-                        "windWavePeriod": {"sg": random.uniform(3, 5)},
-                        "windWaveDirection": {"sg": 260},
+                        "windWaveHeight":        {"sg": random.uniform(0.1, 0.4)},
+                        "windWavePeriod":        {"sg": random.uniform(3, 5)},
+                        "windWaveDirection":     {"sg": 260},
                     })
             hours = mock_hours
             set_cache(cache_key + "_hours", hours)
         else:
             params = "waveHeight,wavePeriod,windSpeed,windDirection,waterTemperature,swellHeight,swellPeriod,swellDirection,secondarySwellHeight,secondarySwellPeriod,secondarySwellDirection,windWaveHeight,windWavePeriod,windWaveDirection,seaLevel"
-            url = "https://api.stormglass.io/v2/weather/point"
-
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    url,
+                    "https://api.stormglass.io/v2/weather/point",
                     params={"lat": lat, "lng": lng, "params": params},
                     headers={"Authorization": STORMGLASS_KEY},
                     timeout=10.0
                 )
-
             if response.status_code != 200:
                 logger.error(f"Stormglass error: {response.status_code} - {response.text}")
                 raise HTTPException(status_code=502, detail="Failed to fetch surf data")
-
             hours = response.json()["hours"]
             set_cache(cache_key + "_hours", hours)
 
-    # Process hours into current conditions
+    # Find the current or next available hour
     now = datetime.now(timezone.utc)
     current = None
     for hour in hours:
-        hour_time = datetime.fromisoformat(hour["time"].replace("+00:00", "+00:00"))
-        if hour_time >= now:
+        if datetime.fromisoformat(hour["time"].replace("+00:00", "+00:00")) >= now:
             current = hour
             break
-
-    if not current:
-        current = hours[0]
-        def get_val(key):
-            return current.get(key, {}).get("sg", 0) or 0
-
-        swells = []
-        if get_val("swellHeight") > 0.1:
-            swells.append({
-                "type": "Primary",
-                "height": meters_to_feet(get_val("swellHeight")),
-                "period": round(get_val("swellPeriod"), 1),
-                "direction": degrees_to_direction(get_val("swellDirection"))
-            })
-        if get_val("secondarySwellHeight") > 0.1:
-            swells.append({
-                "type": "Secondary",
-                "height": meters_to_feet(get_val("secondarySwellHeight")),
-                "period": round(get_val("secondarySwellPeriod"), 1),
-                "direction": degrees_to_direction(get_val("secondarySwellDirection"))
-            })
-
-        return {
-            "waveHeight": meters_to_feet(get_val("waveHeight")),
-            "wavePeriod": round(get_val("wavePeriod"), 1),
-            "windSpeed": round(get_val("windSpeed") * 2.237, 1),
-            "windDirection": degrees_to_direction(get_val("windDirection")),
-            "waterTemp": round(get_val("waterTemperature") * 9/5 + 32, 1),
-            "tideHeight": round(get_val("seaLevel"), 1),
-            "swells": swells,
-            "time": current["time"]
-        }
-    
-    cache_key = get_cache_key(lat, lng)
-
-    cached = get_cached(cache_key)
-    if cached:
-        return cached
-
-    hours = get_cached(cache_key + "_hours")
-
-    if not hours:
-        params = "waveHeight,wavePeriod,windSpeed,windDirection,waterTemperature,swellHeight,swellPeriod,swellDirection,secondarySwellHeight,secondarySwellPeriod,secondarySwellDirection,windWaveHeight,windWavePeriod,windWaveDirection,seaLevel"
-        url = "https://api.stormglass.io/v2/weather/point"
-
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                url,
-                params={"lat": lat, "lng": lng, "params": params},
-                headers={"Authorization": STORMGLASS_KEY},
-                timeout=10.0
-            )
-
-
-        if response.status_code != 200:
-            logger.error(f"Stormglass error: {response.status_code} - {response.text}")
-            raise HTTPException(status_code=502, detail="Failed to fetch surf data")
-
-        hours = response.json()["hours"]
-        set_cache(cache_key + "_hours", hours)
-
-    now = datetime.now(timezone.utc)
-    current = None
-    for hour in hours:
-        hour_time = datetime.fromisoformat(hour["time"].replace("+00:00", "+00:00"))
-        if hour_time >= now:
-            current = hour
-            break
-
     if not current:
         current = hours[0]
 
@@ -218,14 +142,14 @@ async def fetch_surf_data(lat: float, lng: float) -> dict:
         })
 
     result = {
-        "waveHeight": meters_to_feet(get_val("waveHeight")),
-        "wavePeriod": round(get_val("wavePeriod"), 1),
-        "windSpeed": round(get_val("windSpeed") * 2.237, 1),
+        "waveHeight":  meters_to_feet(get_val("waveHeight")),
+        "wavePeriod":  round(get_val("wavePeriod"), 1),
+        "windSpeed":   round(get_val("windSpeed") * 2.237, 1),
         "windDirection": degrees_to_direction(get_val("windDirection")),
-        "waterTemp": round(get_val("waterTemperature") * 9/5 + 32, 1),
-        "tideHeight": round(get_val("seaLevel"), 1),
-        "swells": swells,
-        "time": current["time"]
+        "waterTemp":   round(get_val("waterTemperature") * 9/5 + 32, 1),
+        "tideHeight":  round(get_val("seaLevel"), 1),
+        "swells":      swells,
+        "time":        current["time"]
     }
 
     set_cache(cache_key, result)
@@ -282,11 +206,39 @@ Provide a surf report in JSON format only, no other text:
     clean = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(clean)
 
+def analyze_sessions_batch(sessions_data: list, board_type: str, skill_level: str) -> list:
+    """Score all daily sessions in one Claude call instead of one per session."""
+    sessions_text = ""
+    for s in sessions_data:
+        sessions_text += f"\n- {s['name']} ({s['time']}): {s['waveHeight']}ft waves, {s['wavePeriod']}s period, {s['windSpeed']}mph {s['windDirection']} wind"
+
+    prompt = f"""You are a surf coach. Score each session for a {skill_level} on a {board_type}.
+
+Sessions:{sessions_text}
+
+Return ONLY a JSON array, no other text:
+[
+  {{"name": "Dawn patrol", "score": <1-10>, "verdict": "<Excellent|Good|Fair|Poor>"}},
+  {{"name": "Morning",     "score": <1-10>, "verdict": "<Excellent|Good|Fair|Poor>"}},
+  {{"name": "Afternoon",   "score": <1-10>, "verdict": "<Excellent|Good|Fair|Poor>"}},
+  {{"name": "Evening",     "score": <1-10>, "verdict": "<Excellent|Good|Fair|Poor>"}}
+]
+Only include sessions that were provided."""
+
+    response = anthropic_client.messages.create(
+        model="claude-haiku-4-5-20251001",  # Haiku: faster and cheaper for simple scoring
+        max_tokens=256,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    raw = response.content[0].text
+    clean = raw.replace("```json", "").replace("```", "").strip()
+    return json.loads(clean)
+
 def get_spot_type(spot_name: str) -> str:
     """Use Claude to determine surf spot type."""
     response = anthropic_client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=100,
+        model="claude-haiku-4-5-20251001",  # Simple classification, Haiku is sufficient
+        max_tokens=20,
         messages=[{
             "role": "user",
             "content": f"""What type of surf break is {spot_name}? 
@@ -352,7 +304,12 @@ async def get_forecast(
         spot_type = get_spot_type(spot_name)
         set_cache(cache_key + "_spot_type", spot_type)
 
-    analysis = analyze_conditions(conditions, board, skill)
+        # Cache analysis per location + board + skill combination
+    analysis_key = cache_key + f"_analysis_{board}_{skill}"
+    analysis = get_cached(analysis_key)
+    if not analysis:
+        analysis = analyze_conditions(conditions, board, skill, spot_name, spot_type)
+        set_cache(analysis_key, analysis)
 
     cache_key = get_cache_key(lat, lng)
     hours = get_cached(cache_key + "_hours")
@@ -372,47 +329,47 @@ async def get_forecast(
     now = datetime.now(timezone.utc)
 
     if hours:
+        # Build all session conditions first without any Claude calls
+        sessions_input = []
         for session in sessions_def:
             session_hours = [
                 h for h in hours
                 if datetime.fromisoformat(h["time"].replace("+00:00", "+00:00")).date() == now.date()
                 and datetime.fromisoformat(h["time"].replace("+00:00", "+00:00")).hour in session["hours"]
             ]
-
             if not session_hours:
                 continue
 
-            avg_wave = meters_to_feet(get_avg(session_hours, "waveHeight"))
-            avg_period = round(get_avg(session_hours, "wavePeriod"), 1)
-            avg_wind = round(get_avg(session_hours, "windSpeed") * 2.237, 1)
+            avg_wave     = meters_to_feet(get_avg(session_hours, "waveHeight"))
+            avg_period   = round(get_avg(session_hours, "wavePeriod"), 1)
+            avg_wind     = round(get_avg(session_hours, "windSpeed") * 2.237, 1)
             avg_wind_dir = degrees_to_direction(get_avg(session_hours, "windDirection"))
 
-            session_conditions = {
-                "waveHeight": avg_wave,
-                "wavePeriod": avg_period,
-                "windSpeed": avg_wind,
+            sessions_input.append({
+                "name":          session["name"],
+                "time":          session["time"],
+                "waveHeight":    avg_wave,
+                "wavePeriod":    avg_period,
+                "windSpeed":     avg_wind,
                 "windDirection": avg_wind_dir,
-                "waterTemp": round(get_avg(session_hours, "waterTemperature") * 9/5 + 32, 1),
-                "swells": [],
-            }
+            })
 
-            session_analysis = analyze_conditions(session_conditions, board, skill)
+        # One Claude call for all sessions instead of four
+        scored = analyze_sessions_batch(sessions_input, board, skill)
+        score_map = {s["name"]: s for s in scored}
 
+        sessions = []
+        for s in sessions_input:
+            result = score_map.get(s["name"], {})
             sessions.append({
-                "name": session["name"],
-                "time": session["time"],
-                "score": session_analysis["score"],
-                "verdict": session_analysis["verdict"],
-                "waveHeight": avg_wave,
-                "wavePeriod": avg_period,
-                "windSpeed": avg_wind,
-                "windDirection": avg_wind_dir,
-                "best": False
+                **s,
+                "score":   result.get("score", 5),
+                "verdict": result.get("verdict", "Fair"),
+                "best":    False,
             })
 
         if sessions:
-            best = max(sessions, key=lambda s: s["score"])
-            best["best"] = True
+            max(sessions, key=lambda s: s["score"])["best"] = True
 
     return {
         "conditions": conditions,
