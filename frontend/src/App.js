@@ -2,6 +2,7 @@ import { useState } from 'react';
 import axios from 'axios';
 import DailyForecast from './components/DailyForecast';
 import WeeklyForecast from './components/WeeklyForecast';
+import { getScoreGradient } from './utils/scoreColor';
 
 const API = process.env.REACT_APP_API_URL;
 
@@ -237,7 +238,9 @@ function App() {
             )}
             <div style={s.scoreRow}>
               <div>
-                <div style={s.scoreBig}>{result.analysis.score}</div>
+                <div style={{ ...s.scoreBig, color: getScoreGradient(result.analysis.score) }}>
+                  {result.analysis.score}
+                </div>
                 <div style={s.scoreLabel}>out of 10</div>
               </div>
               <div style={{
@@ -385,7 +388,7 @@ const s = {
   loading: { textAlign: 'center', padding: '40px 0' },
   scoreCard: { background: '#fff', borderRadius: '16px', padding: '24px', marginBottom: '16px', border: '0.5px solid #B5D4F4' },
   scoreRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' },
-  scoreBig: { fontSize: '48px', fontWeight: '500', color: '#185FA5', lineHeight: '1' },
+scoreBig: { fontSize: '48px', fontWeight: '500', lineHeight: '1' }, // color set dynamically
   scoreLabel: { fontSize: '13px', color: '#378ADD', marginTop: '4px' },
   verdict: { padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: '500' },
   summary: { fontSize: '13px', color: '#185FA5', lineHeight: '1.6', marginBottom: '16px' },
