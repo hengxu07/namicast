@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import DailyForecast from './components/DailyForecast';
 import WeeklyForecast from './components/WeeklyForecast';
@@ -35,6 +35,82 @@ function App() {
 
   const [units, setUnits] = useState({ height: 'ft', temp: 'F', speed: 'mph' });
   const [showSettings, setShowSettings] = useState(false);
+
+  const isMobile = useIsMobile();
+
+  const s = {
+  app: { background: '#E6F1FB', minHeight: '100vh', padding: isMobile ? '16px 12px' : '24px', fontFamily: 'sans-serif' },
+  analysisTag: { fontSize: '13px', color: '#185FA5', background: '#E6F1FB', padding: '8px 12px', borderRadius: '8px', marginBottom: '8px', lineHeight: '1.5' },
+
+  // Header stacks vertically on mobile
+  header: { display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: '12px', marginBottom: '16px' },
+  logo: { fontSize: '22px', fontWeight: '500', color: '#042C53', whiteSpace: 'nowrap' },
+  logoBlue: { color: '#378ADD' },
+
+  // Search bar takes full width on mobile
+  searchBar: { flex: 1, maxWidth: isMobile ? '100%' : '400px', background: '#fff', borderRadius: '12px', padding: '8px 14px', border: '0.5px solid #B5D4F4', display: 'flex', alignItems: 'center', gap: '8px' },
+  searchBtn: { padding: '6px 14px', background: '#378ADD', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap' },
+  searchInput: { border: 'none', outline: 'none', fontSize: '14px', color: '#042C53', width: '100%', background: 'transparent' },
+
+  // Settings button aligns right on mobile
+  settingsBtn: { padding: '8px', borderRadius: '8px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '16px', alignSelf: isMobile ? 'flex-end' : 'auto' },
+
+  selectors: { display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' },
+  selector: { padding: '6px 14px', borderRadius: '20px', fontSize: '12px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', color: '#185FA5' },
+  selectorActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
+  divider: { width: '1px', height: '20px', background: '#B5D4F4' },
+
+  spotList: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' },
+  spotBtn: { padding: '8px 16px', borderRadius: '10px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '13px', color: '#185FA5' },
+  spotBtnActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
+
+  settingsPanel: { background: '#fff', borderRadius: '12px', padding: '16px', marginBottom: '16px', border: '0.5px solid #B5D4F4' },
+  settingsRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' },
+  settingsLabel: { fontSize: '13px', color: '#185FA5' },
+  settingsBtns: { display: 'flex', gap: '6px' },
+  unitBtn: { padding: '4px 10px', borderRadius: '6px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '12px', color: '#185FA5' },
+  unitBtnActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
+
+  error: { color: '#A32D2D', fontSize: '13px', marginBottom: '12px' },
+  loading: { textAlign: 'center', padding: '40px 0' },
+
+  // Score card tighter padding on mobile
+  scoreCard: { background: '#fff', borderRadius: '16px', padding: isMobile ? '16px' : '24px', marginBottom: '16px', border: '0.5px solid #B5D4F4' },
+  scoreRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' },
+  scoreBig: { fontSize: isMobile ? '40px' : '48px', fontWeight: '500', lineHeight: '1' }, // color set dynamically
+  scoreLabel: { fontSize: '13px', color: '#378ADD', marginTop: '4px' },
+  verdict: { padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: '500' },
+  summary: { fontSize: '13px', color: '#185FA5', lineHeight: '1.6', marginBottom: '16px' },
+
+  // Metrics: 2 columns on mobile instead of auto-fit
+  metrics: { display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px', marginBottom: '16px' },
+  metric: { background: '#E6F1FB', borderRadius: '10px', padding: '12px' },
+  metricLabel: { fontSize: '11px', color: '#378ADD', marginBottom: '4px' },
+  metricValue: { fontSize: '18px', fontWeight: '500', color: '#042C53' },
+  metricUnit: { fontSize: '11px', color: '#185FA5' },
+
+  spotInfoBar: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px', paddingBottom: '16px', borderBottom: '0.5px solid #E6F1FB' },
+  spotInfoItem: { fontSize: '12px', color: '#185FA5', background: '#E6F1FB', padding: '4px 10px', borderRadius: '20px' },
+
+  spotGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginTop: '12px' },
+  spotGridItem: { background: '#E6F1FB', borderRadius: '8px', padding: '10px' },
+  spotGridValue: { fontSize: '13px', color: '#042C53', fontWeight: '500', marginTop: '4px' },
+
+  swellSection: { marginTop: '16px', paddingTop: '16px', borderTop: '0.5px solid #B5D4F4' },
+  swellRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid #E6F1FB' },
+  swellType: { fontSize: '12px', color: '#378ADD', fontWeight: '500' },
+  swellData: { fontSize: '13px', color: '#042C53', fontWeight: '500' },
+
+  tags: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '16px' },
+  tagBlue: { background: '#E6F1FB', color: '#185FA5', padding: '6px 12px', borderRadius: '8px', fontSize: '12px' },
+  tagGreen: { background: '#EAF3DE', color: '#3B6D11', padding: '6px 12px', borderRadius: '8px', fontSize: '12px' },
+
+  // tipsCard gets bottom margin so cards don't stick together
+  tipsCard: { background: '#fff', borderRadius: '16px', padding: isMobile ? '16px' : '20px', border: '0.5px solid #B5D4F4', marginBottom: '16px' },
+  tipsTitle: { fontSize: '14px', fontWeight: '500', color: '#042C53', marginBottom: '12px' },
+  tip: { display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'flex-start', fontSize: '13px', color: '#185FA5', lineHeight: '1.5' },
+  tipDot: { width: '6px', height: '6px', borderRadius: '50%', background: '#378ADD', marginTop: '5px', flexShrink: 0 },
+};
 
   const convert = {
     height: (val) => units.height === 'ft' ? `${val} ft` : `${(val / 3.28084).toFixed(1)} m`,
@@ -361,58 +437,17 @@ function App() {
   );
 }
 
-const s = {
-  app: { background: '#E6F1FB', minHeight: '100vh', padding: '24px', fontFamily: 'sans-serif' },
-  analysisTag: { fontSize: '13px', color: '#185FA5', background: '#E6F1FB', padding: '8px 12px', borderRadius: '8px', marginBottom: '8px', lineHeight: '1.5' },
-  header: { display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' },
-  logo: { fontSize: '22px', fontWeight: '500', color: '#042C53', whiteSpace: 'nowrap' },
-  logoBlue: { color: '#378ADD' },
-  searchBar: { flex: 1, maxWidth: '400px', background: '#fff', borderRadius: '12px', padding: '8px 14px', border: '0.5px solid #B5D4F4', display: 'flex', alignItems: 'center', gap: '8px' },
-  searchBtn: { padding: '6px 14px', background: '#378ADD', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap' },
-  searchInput: { border: 'none', outline: 'none', fontSize: '14px', color: '#042C53', width: '100%', background: 'transparent' },
-  selectors: { display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' },
-  selector: { padding: '6px 14px', borderRadius: '20px', fontSize: '12px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', color: '#185FA5' },
-  selectorActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
-  divider: { width: '1px', height: '20px', background: '#B5D4F4' },
-  spotList: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' },
-  spotBtn: { padding: '8px 16px', borderRadius: '10px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '13px', color: '#185FA5' },
-  spotBtnActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
-  settingsBtn: { padding: '8px', borderRadius: '8px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '16px' },
-  settingsPanel: { background: '#fff', borderRadius: '12px', padding: '16px', marginBottom: '16px', border: '0.5px solid #B5D4F4' },
-  settingsRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' },
-  settingsLabel: { fontSize: '13px', color: '#185FA5' },
-  settingsBtns: { display: 'flex', gap: '6px' },
-  unitBtn: { padding: '4px 10px', borderRadius: '6px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '12px', color: '#185FA5' },
-  unitBtnActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
-  error: { color: '#A32D2D', fontSize: '13px', marginBottom: '12px' },
-  loading: { textAlign: 'center', padding: '40px 0' },
-  scoreCard: { background: '#fff', borderRadius: '16px', padding: '24px', marginBottom: '16px', border: '0.5px solid #B5D4F4' },
-  scoreRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' },
-scoreBig: { fontSize: '48px', fontWeight: '500', lineHeight: '1' }, // color set dynamically
-  scoreLabel: { fontSize: '13px', color: '#378ADD', marginTop: '4px' },
-  verdict: { padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: '500' },
-  summary: { fontSize: '13px', color: '#185FA5', lineHeight: '1.6', marginBottom: '16px' },
-  metrics: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px', marginBottom: '16px' },
-  metric: { background: '#E6F1FB', borderRadius: '10px', padding: '12px' },
-  metricLabel: { fontSize: '11px', color: '#378ADD', marginBottom: '4px' },
-  metricValue: { fontSize: '18px', fontWeight: '500', color: '#042C53' },
-  metricUnit: { fontSize: '11px', color: '#185FA5' },
-  spotInfoBar: { display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px', paddingBottom: '16px', borderBottom: '0.5px solid #E6F1FB' },
-  spotInfoItem: { fontSize: '12px', color: '#185FA5', background: '#E6F1FB', padding: '4px 10px', borderRadius: '20px' },
-  spotGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginTop: '12px' },
-  spotGridItem: { background: '#E6F1FB', borderRadius: '8px', padding: '10px' },
-  spotGridValue: { fontSize: '13px', color: '#042C53', fontWeight: '500', marginTop: '4px' },
-  swellSection: { marginTop: '16px', paddingTop: '16px', borderTop: '0.5px solid #B5D4F4' },
-  swellRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid #E6F1FB' },
-  swellType: { fontSize: '12px', color: '#378ADD', fontWeight: '500' },
-  swellData: { fontSize: '13px', color: '#042C53', fontWeight: '500' },
-  tags: { display: 'flex', gap: '8px', flexWrap: 'wrap' },
-  tagBlue: { background: '#E6F1FB', color: '#185FA5', padding: '6px 12px', borderRadius: '8px', fontSize: '12px' },
-  tagGreen: { background: '#EAF3DE', color: '#3B6D11', padding: '6px 12px', borderRadius: '8px', fontSize: '12px' },
-  tipsCard: { background: '#fff', borderRadius: '16px', padding: '20px', border: '0.5px solid #B5D4F4' },
-  tipsTitle: { fontSize: '14px', fontWeight: '500', color: '#042C53', marginBottom: '12px' },
-  tip: { display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'flex-start', fontSize: '13px', color: '#185FA5', lineHeight: '1.5' },
-  tipDot: { width: '6px', height: '6px', borderRadius: '50%', background: '#378ADD', marginTop: '5px', flexShrink: 0 },
-};
+// Returns true when viewport width is below 600px
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 600);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 600);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+  return isMobile;
+}
+
+
 
 export default App;

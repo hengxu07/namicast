@@ -49,7 +49,7 @@ function WeeklyForecast({ daily, convert }) {
 const s = {
     container: { marginBottom: '16px' },
     title: { fontSize: '14px', fontWeight: '500', color: '#042C53', marginBottom: '12px' },
-    grid: { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px', overflowX: 'auto' },
+grid: { display: 'grid', gridTemplateColumns: 'repeat(5, minmax(120px, 1fr))', gap: '8px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' },
     card: { background: '#fff', borderRadius: '12px', padding: '14px 12px', border: '0.5px solid #B5D4F4' },
     weekday: { fontSize: '13px', fontWeight: '500', color: '#042C53', marginBottom: '2px' },
     date: { fontSize: '11px', color: '#378ADD', marginBottom: '10px' },

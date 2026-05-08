@@ -72,8 +72,8 @@ function DailyForecast({ forecasts, convert }) {
 const s = {
   container: { marginBottom: '16px' },
   title: { fontSize: '14px', fontWeight: '500', color: '#042C53', marginBottom: '12px' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' },
-  card: { background: '#fff', borderRadius: '12px', padding: '16px', border: '0.5px solid #B5D4F4', position: 'relative' },
+ grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' },
+card: { background: '#fff', borderRadius: '12px', padding: '14px 12px', border: '0.5px solid #B5D4F4', position: 'relative', overflow: 'visible' },
   cardBest: { border: '2px solid #378ADD' },
   bestBadge: { position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: '#378ADD', color: '#fff', fontSize: '11px', padding: '2px 10px', borderRadius: '20px' },
   sessionName: { fontSize: '13px', fontWeight: '500', color: '#042C53', marginBottom: '2px' },
