@@ -37,7 +37,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
 
   const isMobile = useIsMobile();
-  const { favourites, toggle, isFavourite } = useFavourites();
+  const { favorites, toggle, isFavorite } = useFavorites();
 
   const s = {
     app: { background: '#E6F1FB', minHeight: '100vh', padding: isMobile ? '16px 12px' : '24px', fontFamily: 'sans-serif' },
@@ -98,8 +98,8 @@ function App() {
     spotGridValue: { fontSize: '13px', color: '#042C53', fontWeight: '500', marginTop: '4px' },
 
     spotSection: { marginBottom: '8px' },
-spotSectionLabel: { fontSize: '11px', color: '#378ADD', fontWeight: '500', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' },
-favBtn: { padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: '500', cursor: 'pointer', marginBottom: '16px' },
+    spotSectionLabel: { fontSize: '11px', color: '#378ADD', fontWeight: '500', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' },
+    favBtn: { padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: '500', cursor: 'pointer', marginBottom: '16px' },
 
     swellSection: { marginTop: '16px', paddingTop: '16px', borderTop: '0.5px solid #B5D4F4' },
     swellRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid #E6F1FB' },
@@ -240,12 +240,12 @@ favBtn: { padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeigh
         ))}
       </div>
 
-      {/* Favourite spots */}
-      {favourites.length > 0 && (
+      {/* Favorite spots */}
+      {favorites.length > 0 && (
         <div style={s.spotSection}>
-          <div style={s.spotSectionLabel}>⭐ Favourites</div>
+          <div style={s.spotSectionLabel}>⭐ Favorites</div>
           <div style={s.spotList}>
-            {favourites.map(spot => (
+            {favorites.map(spot => (
               <button
                 key={spot.name}
                 style={{ ...s.spotBtn, ...(selectedSpot?.name === spot.name ? s.spotBtnActive : {}) }}
@@ -261,7 +261,7 @@ favBtn: { padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeigh
 
       {/* Default spots */}
       <div style={s.spotSection}>
-        {favourites.length > 0 && <div style={s.spotSectionLabel}>📍 Popular spots</div>}
+        {favorites.length > 0 && <div style={s.spotSectionLabel}>📍 Popular spots</div>}
         <div style={s.spotList}>
           {filteredSpots.map(spot => (
             <button
@@ -339,18 +339,18 @@ favBtn: { padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeigh
                 <span style={s.spotInfoItem}>⚠️ {result.spotInfo.hazards}</span>
               </div>
             )}
-            {/* Favourite toggle button */}
+            {/* Favorite toggle button */}
             {selectedSpot && (
               <button
                 style={{
                   ...s.favBtn,
-                  background: isFavourite(selectedSpot.name) ? '#FFF8E1' : '#fff',
-                  color: isFavourite(selectedSpot.name) ? '#F59E0B' : '#378ADD',
-                  border: `0.5px solid ${isFavourite(selectedSpot.name) ? '#F59E0B' : '#B5D4F4'}`,
+                  background: isFavorite(selectedSpot.name) ? '#FFF8E1' : '#fff',
+                  color: isFavorite(selectedSpot.name) ? '#F59E0B' : '#378ADD',
+                  border: `0.5px solid ${isFavorite(selectedSpot.name) ? '#F59E0B' : '#B5D4F4'}`,
                 }}
                 onClick={() => toggle(selectedSpot)}
               >
-                {isFavourite(selectedSpot.name) ? '⭐ Saved' : '☆ Save spot'}
+                {isFavorite(selectedSpot.name) ? '⭐ Saved' : '☆ Save spot'}
               </button>
             )}
             <div style={s.scoreRow}>
@@ -489,30 +489,30 @@ function useIsMobile() {
   return isMobile;
 }
 
-// Persists favourite spots to localStorage
-function useFavourites() {
-  const [favourites, setFavourites] = useState(() => {
+// Persists favorite spots to localStorage
+function useFavorites() {
+  const [favorites, setFavorites] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('namicast_favourites')) || [];
+      return JSON.parse(localStorage.getItem('namicast_favorites')) || [];
     } catch {
       return [];
     }
   });
 
   const toggle = (spot) => {
-    setFavourites(prev => {
+    setFavorites(prev => {
       const exists = prev.some(s => s.name === spot.name);
       const updated = exists
         ? prev.filter(s => s.name !== spot.name)
         : [...prev, { name: spot.name, lat: spot.lat, lng: spot.lng }];
-      localStorage.setItem('namicast_favourites', JSON.stringify(updated));
+      localStorage.setItem('namicast_favorites', JSON.stringify(updated));
       return updated;
     });
   };
 
-  const isFavourite = (spotName) => favourites.some(s => s.name === spotName);
+  const isFavorite = (spotName) => favorites.some(s => s.name === spotName);
 
-  return { favourites, toggle, isFavourite };
+  return { favorites, toggle, isFavorite };
 }
 
 export default App;
