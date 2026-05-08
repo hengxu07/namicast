@@ -37,80 +37,85 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
 
   const isMobile = useIsMobile();
+  const { favourites, toggle, isFavourite } = useFavourites();
 
   const s = {
-  app: { background: '#E6F1FB', minHeight: '100vh', padding: isMobile ? '16px 12px' : '24px', fontFamily: 'sans-serif' },
-  analysisTag: { fontSize: '13px', color: '#185FA5', background: '#E6F1FB', padding: '8px 12px', borderRadius: '8px', marginBottom: '8px', lineHeight: '1.5' },
+    app: { background: '#E6F1FB', minHeight: '100vh', padding: isMobile ? '16px 12px' : '24px', fontFamily: 'sans-serif' },
+    analysisTag: { fontSize: '13px', color: '#185FA5', background: '#E6F1FB', padding: '8px 12px', borderRadius: '8px', marginBottom: '8px', lineHeight: '1.5' },
 
-  // Header stacks vertically on mobile
-  header: { display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: '12px', marginBottom: '16px' },
-  logo: { fontSize: '22px', fontWeight: '500', color: '#042C53', whiteSpace: 'nowrap' },
-  logoBlue: { color: '#378ADD' },
+    // Header stacks vertically on mobile
+    header: { display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: '12px', marginBottom: '16px' },
+    logo: { fontSize: '22px', fontWeight: '500', color: '#042C53', whiteSpace: 'nowrap' },
+    logoBlue: { color: '#378ADD' },
 
-  // Search bar takes full width on mobile
-  searchBar: { flex: 1, maxWidth: isMobile ? '100%' : '400px', background: '#fff', borderRadius: '12px', padding: '8px 14px', border: '0.5px solid #B5D4F4', display: 'flex', alignItems: 'center', gap: '8px' },
-  searchBtn: { padding: '6px 14px', background: '#378ADD', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap' },
-  searchInput: { border: 'none', outline: 'none', fontSize: '14px', color: '#042C53', width: '100%', background: 'transparent' },
+    // Search bar takes full width on mobile
+    searchBar: { flex: 1, maxWidth: isMobile ? '100%' : '400px', background: '#fff', borderRadius: '12px', padding: '8px 14px', border: '0.5px solid #B5D4F4', display: 'flex', alignItems: 'center', gap: '8px' },
+    searchBtn: { padding: '6px 14px', background: '#378ADD', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap' },
+    searchInput: { border: 'none', outline: 'none', fontSize: '14px', color: '#042C53', width: '100%', background: 'transparent' },
 
-  // Settings button aligns right on mobile
-  settingsBtn: { padding: '8px', borderRadius: '8px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '16px', alignSelf: isMobile ? 'flex-end' : 'auto' },
+    // Settings button aligns right on mobile
+    settingsBtn: { padding: '8px', borderRadius: '8px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '16px', alignSelf: isMobile ? 'flex-end' : 'auto' },
 
-  selectors: { display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' },
-  selector: { padding: '6px 14px', borderRadius: '20px', fontSize: '12px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', color: '#185FA5' },
-  selectorActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
-  divider: { width: '1px', height: '20px', background: '#B5D4F4' },
+    selectors: { display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' },
+    selector: { padding: '6px 14px', borderRadius: '20px', fontSize: '12px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', color: '#185FA5' },
+    selectorActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
+    divider: { width: '1px', height: '20px', background: '#B5D4F4' },
 
-  spotList: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' },
-  spotBtn: { padding: '8px 16px', borderRadius: '10px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '13px', color: '#185FA5' },
-  spotBtnActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
+    spotList: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' },
+    spotBtn: { padding: '8px 16px', borderRadius: '10px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '13px', color: '#185FA5' },
+    spotBtnActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
 
-  settingsPanel: { background: '#fff', borderRadius: '12px', padding: '16px', marginBottom: '16px', border: '0.5px solid #B5D4F4' },
-  settingsRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' },
-  settingsLabel: { fontSize: '13px', color: '#185FA5' },
-  settingsBtns: { display: 'flex', gap: '6px' },
-  unitBtn: { padding: '4px 10px', borderRadius: '6px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '12px', color: '#185FA5' },
-  unitBtnActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
+    settingsPanel: { background: '#fff', borderRadius: '12px', padding: '16px', marginBottom: '16px', border: '0.5px solid #B5D4F4' },
+    settingsRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' },
+    settingsLabel: { fontSize: '13px', color: '#185FA5' },
+    settingsBtns: { display: 'flex', gap: '6px' },
+    unitBtn: { padding: '4px 10px', borderRadius: '6px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '12px', color: '#185FA5' },
+    unitBtnActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
 
-  error: { color: '#A32D2D', fontSize: '13px', marginBottom: '12px' },
-  loading: { textAlign: 'center', padding: '40px 0' },
+    error: { color: '#A32D2D', fontSize: '13px', marginBottom: '12px' },
+    loading: { textAlign: 'center', padding: '40px 0' },
 
-  // Score card tighter padding on mobile
-  scoreCard: { background: '#fff', borderRadius: '16px', padding: isMobile ? '16px' : '24px', marginBottom: '16px', border: '0.5px solid #B5D4F4' },
-  scoreRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' },
-  scoreBig: { fontSize: isMobile ? '40px' : '48px', fontWeight: '500', lineHeight: '1' }, // color set dynamically
-  scoreLabel: { fontSize: '13px', color: '#378ADD', marginTop: '4px' },
-  verdict: { padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: '500' },
-  summary: { fontSize: '13px', color: '#185FA5', lineHeight: '1.6', marginBottom: '16px' },
+    // Score card tighter padding on mobile
+    scoreCard: { background: '#fff', borderRadius: '16px', padding: isMobile ? '16px' : '24px', marginBottom: '16px', border: '0.5px solid #B5D4F4' },
+    scoreRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' },
+    scoreBig: { fontSize: isMobile ? '40px' : '48px', fontWeight: '500', lineHeight: '1' }, // color set dynamically
+    scoreLabel: { fontSize: '13px', color: '#378ADD', marginTop: '4px' },
+    verdict: { padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: '500' },
+    summary: { fontSize: '13px', color: '#185FA5', lineHeight: '1.6', marginBottom: '16px' },
 
-  // Metrics: 2 columns on mobile instead of auto-fit
-  metrics: { display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px', marginBottom: '16px' },
-  metric: { background: '#E6F1FB', borderRadius: '10px', padding: '12px' },
-  metricLabel: { fontSize: '11px', color: '#378ADD', marginBottom: '4px' },
-  metricValue: { fontSize: '18px', fontWeight: '500', color: '#042C53' },
-  metricUnit: { fontSize: '11px', color: '#185FA5' },
+    // Metrics: 2 columns on mobile instead of auto-fit
+    metrics: { display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px', marginBottom: '16px' },
+    metric: { background: '#E6F1FB', borderRadius: '10px', padding: '12px' },
+    metricLabel: { fontSize: '11px', color: '#378ADD', marginBottom: '4px' },
+    metricValue: { fontSize: '18px', fontWeight: '500', color: '#042C53' },
+    metricUnit: { fontSize: '11px', color: '#185FA5' },
 
-  spotInfoBar: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px', paddingBottom: '16px', borderBottom: '0.5px solid #E6F1FB' },
-  spotInfoItem: { fontSize: '12px', color: '#185FA5', background: '#E6F1FB', padding: '4px 10px', borderRadius: '20px' },
+    spotInfoBar: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px', paddingBottom: '16px', borderBottom: '0.5px solid #E6F1FB' },
+    spotInfoItem: { fontSize: '12px', color: '#185FA5', background: '#E6F1FB', padding: '4px 10px', borderRadius: '20px' },
 
-  spotGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginTop: '12px' },
-  spotGridItem: { background: '#E6F1FB', borderRadius: '8px', padding: '10px' },
-  spotGridValue: { fontSize: '13px', color: '#042C53', fontWeight: '500', marginTop: '4px' },
+    spotGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginTop: '12px' },
+    spotGridItem: { background: '#E6F1FB', borderRadius: '8px', padding: '10px' },
+    spotGridValue: { fontSize: '13px', color: '#042C53', fontWeight: '500', marginTop: '4px' },
 
-  swellSection: { marginTop: '16px', paddingTop: '16px', borderTop: '0.5px solid #B5D4F4' },
-  swellRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid #E6F1FB' },
-  swellType: { fontSize: '12px', color: '#378ADD', fontWeight: '500' },
-  swellData: { fontSize: '13px', color: '#042C53', fontWeight: '500' },
+    spotSection: { marginBottom: '8px' },
+spotSectionLabel: { fontSize: '11px', color: '#378ADD', fontWeight: '500', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' },
+favBtn: { padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: '500', cursor: 'pointer', marginBottom: '16px' },
 
-  tags: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '16px' },
-  tagBlue: { background: '#E6F1FB', color: '#185FA5', padding: '6px 12px', borderRadius: '8px', fontSize: '12px' },
-  tagGreen: { background: '#EAF3DE', color: '#3B6D11', padding: '6px 12px', borderRadius: '8px', fontSize: '12px' },
+    swellSection: { marginTop: '16px', paddingTop: '16px', borderTop: '0.5px solid #B5D4F4' },
+    swellRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid #E6F1FB' },
+    swellType: { fontSize: '12px', color: '#378ADD', fontWeight: '500' },
+    swellData: { fontSize: '13px', color: '#042C53', fontWeight: '500' },
 
-  // tipsCard gets bottom margin so cards don't stick together
-  tipsCard: { background: '#fff', borderRadius: '16px', padding: isMobile ? '16px' : '20px', border: '0.5px solid #B5D4F4', marginBottom: '16px' },
-  tipsTitle: { fontSize: '14px', fontWeight: '500', color: '#042C53', marginBottom: '12px' },
-  tip: { display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'flex-start', fontSize: '13px', color: '#185FA5', lineHeight: '1.5' },
-  tipDot: { width: '6px', height: '6px', borderRadius: '50%', background: '#378ADD', marginTop: '5px', flexShrink: 0 },
-};
+    tags: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '16px' },
+    tagBlue: { background: '#E6F1FB', color: '#185FA5', padding: '6px 12px', borderRadius: '8px', fontSize: '12px' },
+    tagGreen: { background: '#EAF3DE', color: '#3B6D11', padding: '6px 12px', borderRadius: '8px', fontSize: '12px' },
+
+    // tipsCard gets bottom margin so cards don't stick together
+    tipsCard: { background: '#fff', borderRadius: '16px', padding: isMobile ? '16px' : '20px', border: '0.5px solid #B5D4F4', marginBottom: '16px' },
+    tipsTitle: { fontSize: '14px', fontWeight: '500', color: '#042C53', marginBottom: '12px' },
+    tip: { display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'flex-start', fontSize: '13px', color: '#185FA5', lineHeight: '1.5' },
+    tipDot: { width: '6px', height: '6px', borderRadius: '50%', background: '#378ADD', marginTop: '5px', flexShrink: 0 },
+  };
 
   const convert = {
     height: (val) => units.height === 'ft' ? `${val} ft` : `${(val / 3.28084).toFixed(1)} m`,
@@ -235,18 +240,40 @@ function App() {
         ))}
       </div>
 
-      {/* Spot list */}
-      <div style={s.spotList}>
-        {filteredSpots.map(spot => (
-          <button
-            key={spot.name}
-            style={{ ...s.spotBtn, ...(selectedSpot?.name === spot.name ? s.spotBtnActive : {}) }}
-            onClick={() => handleCheck(spot)}
-            disabled={loading}
-          >
-            🏄 {spot.name}
-          </button>
-        ))}
+      {/* Favourite spots */}
+      {favourites.length > 0 && (
+        <div style={s.spotSection}>
+          <div style={s.spotSectionLabel}>⭐ Favourites</div>
+          <div style={s.spotList}>
+            {favourites.map(spot => (
+              <button
+                key={spot.name}
+                style={{ ...s.spotBtn, ...(selectedSpot?.name === spot.name ? s.spotBtnActive : {}) }}
+                onClick={() => handleCheck(spot)}
+                disabled={loading}
+              >
+                ⭐ {spot.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Default spots */}
+      <div style={s.spotSection}>
+        {favourites.length > 0 && <div style={s.spotSectionLabel}>📍 Popular spots</div>}
+        <div style={s.spotList}>
+          {filteredSpots.map(spot => (
+            <button
+              key={spot.name}
+              style={{ ...s.spotBtn, ...(selectedSpot?.name === spot.name ? s.spotBtnActive : {}) }}
+              onClick={() => handleCheck(spot)}
+              disabled={loading}
+            >
+              🏄 {spot.name}
+            </button>
+          ))}
+        </div>
       </div>
 
       {showSettings && (
@@ -311,6 +338,20 @@ function App() {
                 <span style={s.spotInfoItem}>🎯 {result.spotInfo.difficulty}</span>
                 <span style={s.spotInfoItem}>⚠️ {result.spotInfo.hazards}</span>
               </div>
+            )}
+            {/* Favourite toggle button */}
+            {selectedSpot && (
+              <button
+                style={{
+                  ...s.favBtn,
+                  background: isFavourite(selectedSpot.name) ? '#FFF8E1' : '#fff',
+                  color: isFavourite(selectedSpot.name) ? '#F59E0B' : '#378ADD',
+                  border: `0.5px solid ${isFavourite(selectedSpot.name) ? '#F59E0B' : '#B5D4F4'}`,
+                }}
+                onClick={() => toggle(selectedSpot)}
+              >
+                {isFavourite(selectedSpot.name) ? '⭐ Saved' : '☆ Save spot'}
+              </button>
             )}
             <div style={s.scoreRow}>
               <div>
@@ -448,6 +489,30 @@ function useIsMobile() {
   return isMobile;
 }
 
+// Persists favourite spots to localStorage
+function useFavourites() {
+  const [favourites, setFavourites] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('namicast_favourites')) || [];
+    } catch {
+      return [];
+    }
+  });
 
+  const toggle = (spot) => {
+    setFavourites(prev => {
+      const exists = prev.some(s => s.name === spot.name);
+      const updated = exists
+        ? prev.filter(s => s.name !== spot.name)
+        : [...prev, { name: spot.name, lat: spot.lat, lng: spot.lng }];
+      localStorage.setItem('namicast_favourites', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const isFavourite = (spotName) => favourites.some(s => s.name === spotName);
+
+  return { favourites, toggle, isFavourite };
+}
 
 export default App;
