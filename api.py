@@ -6,6 +6,8 @@ import anthropic
 import json
 import logging
 import random
+import psycopg2
+import psycopg2.extras
 from collections import defaultdict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,10 +15,22 @@ from fastapi.responses import StreamingResponse
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
 from typing import Optional
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 
 app = FastAPI(title="Namicast API", description="AI-powered surf forecast")
 MOCK_MODE = os.environ.get("MOCK_MODE", "false").lower() == "true"
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+DEFAULT_SPOTS = [
+    {"name": "San Onofre",         "lat": 33.37, "lng": -117.57},
+    {"name": "Doheny State Beach", "lat": 33.46, "lng": -117.68},
+    {"name": "Huntington Beach",   "lat": 33.66, "lng": -118.00},
+    {"name": "Malibu",             "lat": 34.04, "lng": -118.68},
+    {"name": "Trestles",           "lat": 33.38, "lng": -117.59},
+    {"name": "Rincon",             "lat": 34.37, "lng": -119.47},
+]
+DEFAULT_SPOT_NAMES = {s["name"].lower() for s in DEFAULT_SPOTS}
 
 app.add_middleware(
     CORSMiddleware,
@@ -99,9 +113,18 @@ async def execute_agent_tool(tool_name: str, tool_input: dict, board: str, skill
         spot_name = tool_input.get("spot_name", "Unknown")
         target_date = tool_input.get("date")
 
-        hours_raw = await fetch_surf_data(lat, lng)  # warms the cache
         cache_key = get_cache_key(lat, lng)
-        hours = get_cached(cache_key + "_hours") or []
+
+        # Check DB first for default spots
+        db_row = await asyncio.to_thread(db_get_spot, spot_name) if spot_name.lower() in DEFAULT_SPOT_NAMES else None
+        if db_row:
+            hours_raw = db_row["conditions"]
+            hours = db_row["hours_data"]
+            set_cache(cache_key, hours_raw)
+            set_cache(cache_key + "_hours", hours)
+        else:
+            hours_raw = await fetch_surf_data(lat, lng)
+            hours = get_cached(cache_key + "_hours") or []
 
         # Filter hours to target date if specified
         if target_date:
@@ -152,8 +175,8 @@ async def execute_agent_tool(tool_name: str, tool_input: dict, board: str, skill
         for s in sessions_input:
             s.update(score_map.get(s["name"], {"score": 5, "verdict": "Fair"}))
 
-        # Get spot type for context
-        spot_type = get_cached(cache_key + "_spot_type") or get_spot_type(spot_name)
+        # Use cached spot type; default to beach break rather than blocking on a Claude call
+        spot_type = get_cached(cache_key + "_spot_type") or "beach break"
 
         return {
             "spot_name": spot_name,
@@ -170,11 +193,15 @@ async def execute_agent_tool(tool_name: str, tool_input: dict, board: str, skill
         }
 
     elif tool_name == "get_spot_info":
-        # Reuse the existing endpoint logic
         cache_key = f"spot_info_{tool_input['spot_name'].lower().replace(' ', '_')}"
         cached = get_cached(cache_key)
         if cached:
             return cached
+        # Check DB for pre-computed spot info
+        db_row = await asyncio.to_thread(db_get_spot, tool_input["spot_name"]) if tool_input["spot_name"].lower() in DEFAULT_SPOT_NAMES else None
+        if db_row and db_row.get("spot_info"):
+            set_cache(cache_key, db_row["spot_info"])
+            return db_row["spot_info"]
         response = anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=512,
@@ -307,7 +334,7 @@ TOOL_LABELS = {
 async def chat_stream(request: ChatRequest):
     async def generate():
         session_id = request.session_id or str(uuid.uuid4())
-        messages = list(_chat_sessions.get(session_id, []))
+        messages = list(_chat_sessions.get(session_id, {}).get("messages", []))
         messages.append({"role": "user", "content": request.message})
 
         yield f"data: {json.dumps({'type': 'session', 'session_id': session_id})}\n\n"
@@ -334,7 +361,8 @@ async def chat_stream(request: ChatRequest):
 
             if final.stop_reason == "end_turn":
                 messages.append({"role": "assistant", "content": serialized})
-                _chat_sessions[session_id] = messages[-40:]
+                _chat_sessions[session_id] = {"messages": messages[-40:], "last_active": datetime.now(timezone.utc)}
+                _evict_old_sessions()
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 return
 
@@ -365,6 +393,95 @@ async def chat_stream(request: ChatRequest):
 
 logger = logging.getLogger(__name__)
 
+# ── Database ──────────────────────────────────────────────────────────────────
+
+def get_db():
+    if not DATABASE_URL:
+        return None
+    try:
+        return psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    except Exception as e:
+        logger.error(f"DB connect failed: {e}")
+        return None
+
+def init_db():
+    conn = get_db()
+    if not conn:
+        return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS spot_cache (
+                    spot_name   TEXT PRIMARY KEY,
+                    lat         FLOAT NOT NULL,
+                    lng         FLOAT NOT NULL,
+                    computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    conditions  JSONB,
+                    hours_data  JSONB,
+                    spot_type   TEXT,
+                    spot_info   JSONB,
+                    daily       JSONB
+                )
+            """)
+        conn.commit()
+        logger.info("DB initialized")
+    except Exception as e:
+        logger.error(f"DB init failed: {e}")
+    finally:
+        conn.close()
+
+def db_get_spot(spot_name: str, max_age_hours: int = 12) -> dict | None:
+    conn = get_db()
+    if not conn:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM spot_cache
+                WHERE lower(spot_name) = lower(%s)
+                  AND computed_at > NOW() - INTERVAL '%s hours'
+            """, (spot_name, max_age_hours))
+            row = cur.fetchone()
+            return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"DB read failed: {e}")
+        return None
+    finally:
+        conn.close()
+
+def db_save_spot(spot_name: str, lat: float, lng: float, data: dict):
+    conn = get_db()
+    if not conn:
+        return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO spot_cache (spot_name, lat, lng, computed_at, conditions, hours_data, spot_type, spot_info, daily)
+                VALUES (%s, %s, %s, NOW(), %s, %s, %s, %s, %s)
+                ON CONFLICT (spot_name) DO UPDATE SET
+                    computed_at = NOW(),
+                    conditions  = EXCLUDED.conditions,
+                    hours_data  = EXCLUDED.hours_data,
+                    spot_type   = EXCLUDED.spot_type,
+                    spot_info   = EXCLUDED.spot_info,
+                    daily       = EXCLUDED.daily
+            """, (
+                spot_name, lat, lng,
+                json.dumps(data["conditions"]),
+                json.dumps(data["hours_data"]),
+                data["spot_type"],
+                json.dumps(data["spot_info"]),
+                json.dumps(data["daily"]),
+            ))
+        conn.commit()
+        logger.info(f"DB saved: {spot_name}")
+    except Exception as e:
+        logger.error(f"DB save failed for {spot_name}: {e}")
+    finally:
+        conn.close()
+
+# ── In-memory cache (fallback when no DB) ─────────────────────────────────────
+
 # Simple in-memory cache
 _cache = {}
 CACHE_TTL_MINUTES = 60
@@ -389,8 +506,15 @@ ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"]
 anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
 async_anthropic_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_KEY)
 
-# Multi-turn chat sessions: session_id -> list of messages (capped at 40)
-_chat_sessions: dict[str, list] = {}
+# Multi-turn chat sessions: session_id -> {messages, last_active}
+SESSION_TTL_HOURS = 24
+_chat_sessions: dict[str, dict] = {}
+
+def _evict_old_sessions():
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=SESSION_TTL_HOURS)
+    stale = [sid for sid, s in _chat_sessions.items() if s["last_active"] < cutoff]
+    for sid in stale:
+        del _chat_sessions[sid]
 
 def meters_to_feet(meters: float) -> float:
     return round(meters * 3.28084, 1)
@@ -501,82 +625,66 @@ async def fetch_surf_data(lat: float, lng: float) -> dict:
     set_cache(cache_key, result)
     return result
 
-def analyze_conditions(conditions: dict, board_type: str, skill_level: str, spot_name: str = "Unknown", spot_type: str = "beach break") -> dict:
-    """Use Claude to analyze surf conditions and give recommendations."""
-    swell_text = ""
-    for swell in conditions.get("swells", []):
-        swell_text += f"\n- {swell['type']} swell: {swell['height']}ft @ {swell['period']}s {swell['direction']}"
+async def analyze_forecast(
+    conditions: dict,
+    sessions_data: list,
+    board_type: str,
+    skill_level: str,
+    spot_name: str = "Unknown",
+    spot_type: str = "beach break",
+) -> tuple[dict, list]:
+    """Single Claude call returning both full analysis and per-session scores."""
+    swell_text = "".join(
+        f"\n- {s['type']}: {s['height']}ft @ {s['period']}s {s['direction']}"
+        for s in conditions.get("swells", [])
+    ) or " none"
 
-    prompt = f"""You are an expert surf coach analyzing conditions at a specific surf spot.
+    sessions_text = "".join(
+        f"\n- {s['name']} ({s['time']}): {s['waveHeight']}ft, {s['wavePeriod']}s, {s['windSpeed']}mph {s['windDirection']}"
+        for s in sessions_data
+    ) or " no session data"
 
-Surf spot: {spot_name}
-Spot type: {spot_type}
+    prompt = f"""You are an expert surf coach analyzing {spot_name} ({spot_type}).
 
-Current conditions:
-- Total wave height: {conditions['waveHeight']} ft
-- Wind: {conditions['windSpeed']} mph {conditions['windDirection']}
-- Water temperature: {conditions['waterTemp']}°F
-- Tide: {conditions.get('tideHeight', 0)} m
+Conditions:
+- Waves: {conditions['waveHeight']}ft @ {conditions['wavePeriod']}s
+- Wind: {conditions['windSpeed']}mph {conditions['windDirection']}
+- Water temp: {conditions['waterTemp']}°F
+- Tide: {conditions.get('tideHeight', 0)}m
+- Swells:{swell_text}
 
+Today's sessions:{sessions_text}
 
-Swell breakdown:{swell_text if swell_text else ' No significant swells detected'}
+Surfer: {skill_level} on a {board_type}
 
-Surfer profile:
-- Board: {board_type}
-- Skill level: {skill_level}
+Address wind direction (offshore/onshore/cross-shore), how {spot_type} interacts with current swell, and personalize for the surfer's level.
 
-In your analysis, specifically address:
-1. Whether the wind is offshore, onshore, or cross-shore for this spot, and how it affects wave quality
-2. How the spot type ({spot_type}) interacts with current swell direction and period
-3. Which swell direction is ideal for this spot and whether current swells are optimal
-
-Provide a surf report in JSON format only, no other text:
+Return ONLY JSON, no other text:
 {{
+  "analysis": {{
     "score": <1-10 integer>,
-    "verdict": "<one of: Excellent, Good, Fair, Poor>",
-    "summary": "<2-3 sentence summary including wind effect and spot characteristics>",
-    "wind_analysis": "<1 sentence: is wind offshore/onshore/cross-shore and how it affects this spot>",
-    "spot_analysis": "<1 sentence: how spot type affects today's conditions>",
-    "best_time": "<when today is best to surf>",
-    "wetsuit": "<wetsuit recommendation>",
+    "verdict": "<Excellent|Good|Fair|Poor>",
+    "summary": "<2-3 sentences>",
+    "wind_analysis": "<1 sentence>",
+    "spot_analysis": "<1 sentence>",
+    "best_time": "<best window today>",
+    "wetsuit": "<recommendation>",
     "tips": ["<tip 1>", "<tip 2>", "<tip 3>"]
-}}"""
+  }},
+  "sessions": [
+    {{"name": "<name>", "score": <1-10>, "verdict": "<Excellent|Good|Fair|Poor>"}}
+  ]
+}}
+Include only the sessions provided."""
 
-    response = anthropic_client.messages.create(
+    response = await asyncio.to_thread(
+        anthropic_client.messages.create,
         model="claude-sonnet-4-6",
-        max_tokens=512,
-        messages=[{"role": "user", "content": prompt}]
+        max_tokens=768,
+        messages=[{"role": "user", "content": prompt}],
     )
-
-    raw = response.content[0].text
-    return parse_json_response(raw)
-
-def analyze_sessions_batch(sessions_data: list, board_type: str, skill_level: str) -> list:
-    """Score all daily sessions in one Claude call instead of one per session."""
-    sessions_text = ""
-    for s in sessions_data:
-        sessions_text += f"\n- {s['name']} ({s['time']}): {s['waveHeight']}ft waves, {s['wavePeriod']}s period, {s['windSpeed']}mph {s['windDirection']} wind"
-
-    prompt = f"""You are a surf coach. Score each session for a {skill_level} on a {board_type}.
-
-Sessions:{sessions_text}
-
-Return ONLY a JSON array, no other text:
-[
-  {{"name": "Dawn patrol", "score": <1-10>, "verdict": "<Excellent|Good|Fair|Poor>"}},
-  {{"name": "Morning",     "score": <1-10>, "verdict": "<Excellent|Good|Fair|Poor>"}},
-  {{"name": "Afternoon",   "score": <1-10>, "verdict": "<Excellent|Good|Fair|Poor>"}},
-  {{"name": "Evening",     "score": <1-10>, "verdict": "<Excellent|Good|Fair|Poor>"}}
-]
-Only include sessions that were provided."""
-
-    response = anthropic_client.messages.create(
-        model="claude-haiku-4-5-20251001",  # Haiku: faster and cheaper for simple scoring
-        max_tokens=256,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    raw = response.content[0].text
-    return parse_json_response(raw)
+    result = parse_json_response(response.content[0].text)
+    return result["analysis"], result.get("sessions", [])
 
 def get_spot_type(spot_name: str) -> str:
     """Use Claude to determine surf spot type."""
@@ -629,6 +737,102 @@ If you don't know this specific spot, provide best estimates based on its locati
     set_cache(cache_key, result)
     return result
 
+# ── Background refresh job ────────────────────────────────────────────────────
+
+async def refresh_spot(spot: dict):
+    """Fetch and store all board/skill-agnostic data for one spot."""
+    name, lat, lng = spot["name"], spot["lat"], spot["lng"]
+    try:
+        conditions = await fetch_surf_data(lat, lng)
+        cache_key = get_cache_key(lat, lng)
+        hours_data = get_cached(cache_key + "_hours") or []
+        spot_type = get_spot_type(name)
+        set_cache(cache_key + "_spot_type", spot_type)
+
+        spot_info_key = f"spot_info_{name.lower().replace(' ', '_')}"
+        spot_info = get_cached(spot_info_key)
+        if not spot_info:
+            response = anthropic_client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=512,
+                messages=[{"role": "user", "content": f"""Provide information about the surf spot: {name}
+Return ONLY a JSON object, no other text:
+{{"type":"","difficulty":"","best_season":"","best_swell":"","best_wind":"","best_tide":"","hazards":"","description":"","known_for":""}}
+If unknown, estimate from location."""}]
+            )
+            spot_info = parse_json_response(response.content[0].text)
+            set_cache(spot_info_key, spot_info)
+
+        def get_avg(hrs, key):
+            vals = [h.get(key, {}).get("sg", 0) or 0 for h in hrs]
+            return sum(vals) / len(vals) if vals else 0
+
+        days_map = defaultdict(list)
+        for hour in hours_data:
+            date = datetime.fromisoformat(hour["time"].replace("+00:00", "+00:00")).date()
+            days_map[date].append(hour)
+
+        daily = []
+        for date in sorted(days_map.keys())[:5]:
+            day_hours = days_map[date]
+            avg_wave = meters_to_feet(get_avg(day_hours, "waveHeight"))
+            avg_wind = round(get_avg(day_hours, "windSpeed") * 2.237, 1)
+            avg_period = round(get_avg(day_hours, "wavePeriod"), 1)
+            sc = simple_score(avg_wave, avg_wind, avg_period)
+            daily.append({
+                "date": date.isoformat(),
+                "weekday": date.strftime("%a"),
+                "score": sc["score"],
+                "verdict": sc["verdict"],
+                "waveHeight": avg_wave,
+                "wavePeriod": avg_period,
+                "windSpeed": avg_wind,
+                "windDirection": degrees_to_direction(get_avg(day_hours, "windDirection")),
+            })
+
+        await asyncio.to_thread(db_save_spot, name, lat, lng, {
+            "conditions": conditions,
+            "hours_data": hours_data,
+            "spot_type": spot_type,
+            "spot_info": spot_info,
+            "daily": daily,
+        })
+        logger.info(f"Refreshed: {name}")
+    except Exception as e:
+        logger.error(f"Refresh failed for {name}: {e}")
+
+
+async def refresh_all_spots():
+    logger.info("Starting spot refresh for all default spots...")
+    await asyncio.gather(*[refresh_spot(s) for s in DEFAULT_SPOTS])
+    logger.info("Spot refresh complete.")
+
+
+scheduler = AsyncIOScheduler()
+
+@app.on_event("startup")
+async def startup():
+    init_db()
+    if DATABASE_URL:
+        # Refresh at 5am and 5pm UTC daily
+        scheduler.add_job(refresh_all_spots, "cron", hour="5,17", minute=0)
+        scheduler.start()
+        await refresh_all_spots()
+
+@app.on_event("shutdown")
+async def shutdown():
+    if scheduler.running:
+        scheduler.shutdown()
+
+@app.post("/admin/refresh")
+async def admin_refresh():
+    """Manually trigger a refresh of all default spots."""
+    asyncio.create_task(refresh_all_spots())
+    return {"status": "refresh started"}
+
+
+# ── Forecast endpoint ─────────────────────────────────────────────────────────
+
 @app.get("/forecast")
 async def get_forecast(
     lat: float,
@@ -637,26 +841,30 @@ async def get_forecast(
     skill: str = "intermediate",
     spot_name: str = "Unknown"
 ):
-    conditions = await fetch_surf_data(lat, lng)
-
     """Get surf forecast with AI analysis and daily session breakdown."""
-    # Get spot type (cache it too)
     cache_key = get_cache_key(lat, lng)
-    spot_type = get_cached(cache_key + "_spot_type")
-    if not spot_type:
-        spot_type = get_spot_type(spot_name)
+
+    # ── Fast path: load pre-computed data from DB ──────────────────────────────
+    db_row = await asyncio.to_thread(db_get_spot, spot_name) if spot_name.lower() in DEFAULT_SPOT_NAMES else None
+
+    if db_row:
+        conditions = db_row["conditions"]
+        hours      = db_row["hours_data"]
+        spot_type  = db_row["spot_type"]
+        # Warm the in-memory cache so the agent tools can use it too
+        set_cache(cache_key, conditions)
+        set_cache(cache_key + "_hours", hours)
         set_cache(cache_key + "_spot_type", spot_type)
+    else:
+        # ── Slow path: live fetch ──────────────────────────────────────────────
+        conditions = await fetch_surf_data(lat, lng)
+        hours      = get_cached(cache_key + "_hours")
+        spot_type  = get_cached(cache_key + "_spot_type") or "beach break"
+        # Save to DB so next request is fast
+        if DATABASE_URL:
+            asyncio.create_task(refresh_spot({"name": spot_name, "lat": lat, "lng": lng}))
 
-        # Cache analysis per location + board + skill combination
-    analysis_key = cache_key + f"_analysis_{board}_{skill}"
-    analysis = get_cached(analysis_key)
-    if not analysis:
-        analysis = analyze_conditions(conditions, board, skill, spot_name, spot_type)
-        set_cache(analysis_key, analysis)
-
-    cache_key = get_cache_key(lat, lng)
-    hours = get_cached(cache_key + "_hours")
-
+    # Build sessions input from hours data
     sessions_def = [
         {"name": "Dawn patrol", "time": "5am–8am",  "hours": [5, 6, 7]},
         {"name": "Morning",     "time": "8am–12pm", "hours": [8, 9, 10, 11]},
@@ -668,12 +876,9 @@ async def get_forecast(
         vals = [h.get(key, {}).get("sg", 0) or 0 for h in hours_data]
         return sum(vals) / len(vals) if vals else 0
 
-    sessions = []
     now = datetime.now(timezone.utc)
-
+    sessions_input = []
     if hours:
-        # Build all session conditions first without any Claude calls
-        sessions_input = []
         for session in sessions_def:
             session_hours = [
                 h for h in hours
@@ -682,43 +887,43 @@ async def get_forecast(
             ]
             if not session_hours:
                 continue
-
-            avg_wave     = meters_to_feet(get_avg(session_hours, "waveHeight"))
-            avg_period   = round(get_avg(session_hours, "wavePeriod"), 1)
-            avg_wind     = round(get_avg(session_hours, "windSpeed") * 2.237, 1)
-            avg_wind_dir = degrees_to_direction(get_avg(session_hours, "windDirection"))
-
             sessions_input.append({
                 "name":          session["name"],
                 "time":          session["time"],
-                "waveHeight":    avg_wave,
-                "wavePeriod":    avg_period,
-                "windSpeed":     avg_wind,
-                "windDirection": avg_wind_dir,
+                "waveHeight":    meters_to_feet(get_avg(session_hours, "waveHeight")),
+                "wavePeriod":    round(get_avg(session_hours, "wavePeriod"), 1),
+                "windSpeed":     round(get_avg(session_hours, "windSpeed") * 2.237, 1),
+                "windDirection": degrees_to_direction(get_avg(session_hours, "windDirection")),
             })
 
-        # One Claude call for all sessions instead of four
-        scored = analyze_sessions_batch(sessions_input, board, skill)
-        score_map = {s["name"]: s for s in scored}
+    # Single Claude call for both analysis and session scores
+    analysis_key = cache_key + f"_analysis_{board}_{skill}"
+    cached_analysis = get_cached(analysis_key)
+    if cached_analysis:
+        analysis = cached_analysis
+        scored = cached_analysis.get("_sessions", [])
+    else:
+        analysis, scored = await analyze_forecast(
+            conditions, sessions_input, board, skill, spot_name, spot_type
+        )
+        analysis["_sessions"] = scored  # store together to avoid double-caching
+        set_cache(analysis_key, analysis)
 
-        sessions = []
-        for s in sessions_input:
-            result = score_map.get(s["name"], {})
-            sessions.append({
-                **s,
-                "score":   result.get("score", 5),
-                "verdict": result.get("verdict", "Fair"),
-                "best":    False,
-            })
-
-        if sessions:
-            max(sessions, key=lambda s: s["score"])["best"] = True
+    score_map = {s["name"]: s for s in scored}
+    sessions = [
+        {**s, "score": score_map.get(s["name"], {}).get("score", 5),
+              "verdict": score_map.get(s["name"], {}).get("verdict", "Fair"),
+              "best": False}
+        for s in sessions_input
+    ]
+    if sessions:
+        max(sessions, key=lambda s: s["score"])["best"] = True
 
     return {
         "conditions": conditions,
-        "analysis": analysis,
-        "location": {"lat": lat, "lng": lng},
-        "forecast": sessions
+        "analysis":   {k: v for k, v in analysis.items() if k != "_sessions"},
+        "location":   {"lat": lat, "lng": lng},
+        "forecast":   sessions
     }
 
 def simple_score(wave_height: float, wind_speed: float, wave_period: float) -> dict:
@@ -754,11 +959,22 @@ async def get_daily_forecast(
     lng: float,
     board: str = "longboard",
     skill: str = "intermediate",
-    days: int = 5
+    days: int = 5,
+    spot_name: str = ""
 ):
     """Get multi-day surf forecast."""
     cache_key = get_cache_key(lat, lng)
     hours = get_cached(cache_key + "_hours")
+
+    # Fast path: check DB for pre-computed daily data
+    if not hours and spot_name and spot_name.lower() in DEFAULT_SPOT_NAMES:
+        db_row = await asyncio.to_thread(db_get_spot, spot_name)
+        if db_row:
+            if db_row.get("daily"):
+                return {"daily": db_row["daily"][:days], "location": {"lat": lat, "lng": lng}}
+            hours = db_row.get("hours_data")
+            if hours:
+                set_cache(cache_key + "_hours", hours)
 
     if not hours:
         if MOCK_MODE:

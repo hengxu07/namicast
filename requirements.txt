@@ -3,3 +3,5 @@ uvicorn
 httpx
 anthropic
 python-multipart
+psycopg2-binary
+apscheduler
