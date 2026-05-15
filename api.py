@@ -8,6 +8,8 @@ from collections import defaultdict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone, timedelta
+from pydantic import BaseModel
+from typing import Optional
 
 
 app = FastAPI(title="Namicast API", description="AI-powered surf forecast")
@@ -20,6 +22,241 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str | list
+
+class ChatRequest(BaseModel):
+    message: str
+    board: str = "longboard"
+    skill: str = "intermediate"
+    history: list[ChatMessage] = []
+
+AGENT_TOOLS = [
+    {
+        "name": "geocode_location",
+        "description": "Convert a surf spot name to latitude/longitude coordinates",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "location": {"type": "string", "description": "Surf spot or beach name"}
+            },
+            "required": ["location"]
+        }
+    },
+    {
+        "name": "get_surf_conditions",
+        "description": "Get surf forecast data for a location. Returns wave height, period, wind, swells, and session scores for today or a specific date.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "lat": {"type": "number"},
+                "lng": {"type": "number"},
+                "spot_name": {"type": "string"},
+                "date": {"type": "string", "description": "ISO date string YYYY-MM-DD, or omit for today"}
+            },
+            "required": ["lat", "lng", "spot_name"]
+        }
+    },
+    {
+        "name": "get_spot_info",
+        "description": "Get general knowledge about a surf spot: break type, difficulty, best swell/wind/tide, hazards.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "spot_name": {"type": "string"}
+            },
+            "required": ["spot_name"]
+        }
+    }
+]
+
+async def execute_agent_tool(tool_name: str, tool_input: dict, board: str, skill: str) -> dict:
+    if tool_name == "geocode_location":
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"q": tool_input["location"], "format": "json", "limit": 1},
+                headers={"Accept-Language": "en", "User-Agent": "Namicast/1.0"}
+            )
+        data = res.json()
+        if not data:
+            return {"error": f"Location '{tool_input['location']}' not found"}
+        place = data[0]
+        return {
+            "name": place["display_name"].split(",")[0],
+            "lat": float(place["lat"]),
+            "lng": float(place["lon"])
+        }
+
+    elif tool_name == "get_surf_conditions":
+        lat, lng = tool_input["lat"], tool_input["lng"]
+        spot_name = tool_input.get("spot_name", "Unknown")
+        target_date = tool_input.get("date")
+
+        hours_raw = await fetch_surf_data(lat, lng)  # warms the cache
+        cache_key = get_cache_key(lat, lng)
+        hours = get_cached(cache_key + "_hours") or []
+
+        # Filter hours to target date if specified
+        if target_date:
+            from datetime import date as date_type
+            target = date_type.fromisoformat(target_date)
+            day_hours = [
+                h for h in hours
+                if datetime.fromisoformat(h["time"].replace("+00:00", "+00:00")).date() == target
+            ]
+        else:
+            today = datetime.now(timezone.utc).date()
+            day_hours = [
+                h for h in hours
+                if datetime.fromisoformat(h["time"].replace("+00:00", "+00:00")).date() == today
+            ]
+
+        def get_avg(hrs, key):
+            vals = [h.get(key, {}).get("sg", 0) or 0 for h in hrs]
+            return sum(vals) / len(vals) if vals else 0
+
+        sessions_def = [
+            {"name": "Dawn patrol", "time": "5am–8am",  "hours": [5, 6, 7]},
+            {"name": "Morning",     "time": "8am–12pm", "hours": [8, 9, 10, 11]},
+            {"name": "Afternoon",   "time": "12pm–5pm", "hours": [12, 13, 14, 15, 16]},
+            {"name": "Evening",     "time": "5pm–8pm",  "hours": [17, 18, 19]},
+        ]
+
+        sessions_input = []
+        for session in sessions_def:
+            s_hours = [
+                h for h in day_hours
+                if datetime.fromisoformat(h["time"].replace("+00:00", "+00:00")).hour in session["hours"]
+            ]
+            if not s_hours:
+                continue
+            sessions_input.append({
+                "name": session["name"],
+                "time": session["time"],
+                "waveHeight": meters_to_feet(get_avg(s_hours, "waveHeight")),
+                "wavePeriod": round(get_avg(s_hours, "wavePeriod"), 1),
+                "windSpeed": round(get_avg(s_hours, "windSpeed") * 2.237, 1),
+                "windDirection": degrees_to_direction(get_avg(s_hours, "windDirection")),
+                "tideHeight": round(get_avg(s_hours, "seaLevel"), 1),
+            })
+
+        scored = analyze_sessions_batch(sessions_input, board, skill) if sessions_input else []
+        score_map = {s["name"]: s for s in scored}
+        for s in sessions_input:
+            s.update(score_map.get(s["name"], {"score": 5, "verdict": "Fair"}))
+
+        # Get spot type for context
+        spot_type = get_cached(cache_key + "_spot_type") or get_spot_type(spot_name)
+
+        return {
+            "spot_name": spot_name,
+            "spot_type": spot_type,
+            "date": target_date or datetime.now(timezone.utc).date().isoformat(),
+            "overall": {
+                "waveHeight": hours_raw["waveHeight"],
+                "wavePeriod": hours_raw["wavePeriod"],
+                "windSpeed": hours_raw["windSpeed"],
+                "windDirection": hours_raw["windDirection"],
+                "waterTemp": hours_raw["waterTemp"],
+            },
+            "sessions": sessions_input
+        }
+
+    elif tool_name == "get_spot_info":
+        # Reuse the existing endpoint logic
+        cache_key = f"spot_info_{tool_input['spot_name'].lower().replace(' ', '_')}"
+        cached = get_cached(cache_key)
+        if cached:
+            return cached
+        response = anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=512,
+            messages=[{"role": "user", "content": f"""Provide surf spot info for: {tool_input['spot_name']}
+Return ONLY JSON: {{"type":"","difficulty":"","best_season":"","best_swell":"","best_wind":"","best_tide":"","hazards":"","description":""}}"""}]
+        )
+        raw = response.content[0].text
+        result = json.loads(raw.replace("```json","").replace("```","").strip())
+        set_cache(cache_key, result)
+        return result
+
+    return {"error": f"Unknown tool: {tool_name}"}
+
+
+def serialize_content(content) -> list:
+    """Convert Anthropic SDK content blocks to plain JSON-serializable dicts."""
+    result = []
+    for block in content:
+        if block.type == "text":
+            result.append({"type": "text", "text": block.text})
+        elif block.type == "tool_use":
+            result.append({"type": "tool_use", "id": block.id, "name": block.name, "input": block.input})
+    return result
+
+
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    today = datetime.now(timezone.utc).strftime("%A, %B %d, %Y")
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    system = f"""You are Namicast, an expert AI surf coach with access to real-time surf data.
+Today is {today}. Tomorrow's date is {tomorrow}.
+User profile: {request.skill} surfer riding a {request.board}.
+
+When answering questions about surf conditions:
+- Always geocode the location first if you don't have lat/lng
+- Fetch surf conditions for the relevant date
+- Give a direct, opinionated answer (yes/no with reasoning)
+- Be specific: mention wave size, wind quality (offshore/onshore), session score
+- Keep answers concise — 2-4 sentences for a yes/no question, more for planning questions
+- Use the surfer's skill level and board to personalize the recommendation"""
+
+    messages = [{"role": m.role, "content": m.content} for m in request.history]
+    messages.append({"role": "user", "content": request.message})
+
+    # Agentic loop
+    for _ in range(5):  # max 5 tool-call rounds
+        for attempt in range(3):
+            try:
+                response = anthropic_client.messages.create(
+                    model="claude-sonnet-4-6",
+                    max_tokens=1024,
+                    system=system,
+                    tools=AGENT_TOOLS,
+                    messages=messages
+                )
+                break
+            except anthropic.APIStatusError as e:
+                if e.status_code == 529 and attempt < 2:
+                    import time; time.sleep(2 ** attempt)
+                else:
+                    raise HTTPException(status_code=503, detail="AI service temporarily overloaded. Please try again in a moment.")
+
+        serialized = serialize_content(response.content)
+
+        if response.stop_reason == "end_turn":
+            text = next((b["text"] for b in serialized if b["type"] == "text"), "")
+            return {
+                "reply": text,
+                "history": messages + [{"role": "assistant", "content": serialized}]
+            }
+
+        if response.stop_reason == "tool_use":
+            messages.append({"role": "assistant", "content": serialized})
+            tool_results = []
+            for block in serialized:
+                if block["type"] == "tool_use":
+                    result = await execute_agent_tool(block["name"], block["input"], request.board, request.skill)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block["id"],
+                        "content": json.dumps(result)
+                    })
+            messages.append({"role": "user", "content": tool_results})
+
+    return {"reply": "Sorry, I couldn't complete that request.", "history": messages}
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +434,7 @@ Provide a surf report in JSON format only, no other text:
 }}"""
 
     response = anthropic_client.messages.create(
-        model="claude-sonnet-4-5",
+        model="claude-sonnet-4-6",
         max_tokens=512,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -257,7 +494,7 @@ async def get_spot_info(spot_name: str):
         return cached
 
     response = anthropic_client.messages.create(
-        model="claude-sonnet-4-5",
+        model="claude-sonnet-4-6",
         max_tokens=512,
         messages=[{
             "role": "user",

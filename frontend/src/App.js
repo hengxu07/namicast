@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import ChatInterface from './components/ChatInterface';
 import DailyForecast from './components/DailyForecast';
 import WeeklyForecast from './components/WeeklyForecast';
 import { getScoreGradient } from './utils/scoreColor';
@@ -15,7 +16,7 @@ const SPOTS = [
 ];
 
 const BOARDS = ['Longboard', 'Shortboard', 'Funboard'];
-const SKILLS = ['Beginner', 'Intermediate', 'Advanced'];
+const SKILLS = ['Beginner', 'Beg-Intermediate', 'Intermediate', 'Advanced'];
 
 const verdictColors = {
   Excellent: { bg: '#EAF3DE', color: '#3B6D11' },
@@ -239,6 +240,8 @@ function App() {
           </button>
         ))}
       </div>
+      <ChatInterface board={board} skill={skill} />
+
 
       {/* Favorite spots */}
       {favorites.length > 0 && (
