@@ -402,7 +402,7 @@ function App() {
           {/* Tips */}
           <div style={s.tipsCard}>
             <div style={s.tipsTitle}>Tips for your session</div>
-            {result.analysis.tips.map((tip, i) => (
+            {(result.analysis.tips || []).map((tip, i) => (
               <div key={i} style={s.tip}>
                 <div style={s.tipDot} />
                 {tip}

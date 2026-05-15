@@ -182,11 +182,25 @@ async def execute_agent_tool(tool_name: str, tool_input: dict, board: str, skill
 Return ONLY JSON: {{"type":"","difficulty":"","best_season":"","best_swell":"","best_wind":"","best_tide":"","hazards":"","description":""}}"""}]
         )
         raw = response.content[0].text
-        result = json.loads(raw.replace("```json","").replace("```","").strip())
+        result = parse_json_response(raw)
         set_cache(cache_key, result)
         return result
 
     return {"error": f"Unknown tool: {tool_name}"}
+
+
+def parse_json_response(raw: str):
+    """Extract JSON from Claude's response regardless of surrounding text or code fences."""
+    # Try array first, then object
+    for start_char, end_char in [('[', ']'), ('{', '}')]:
+        start = raw.find(start_char)
+        end = raw.rfind(end_char)
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(raw[start:end + 1])
+            except json.JSONDecodeError:
+                continue
+    raise ValueError(f"No valid JSON found in response: {raw[:200]}")
 
 
 def serialize_content(content) -> list:
@@ -535,8 +549,7 @@ Provide a surf report in JSON format only, no other text:
     )
 
     raw = response.content[0].text
-    clean = raw.replace("```json", "").replace("```", "").strip()
-    return json.loads(clean)
+    return parse_json_response(raw)
 
 def analyze_sessions_batch(sessions_data: list, board_type: str, skill_level: str) -> list:
     """Score all daily sessions in one Claude call instead of one per session."""
@@ -563,8 +576,7 @@ Only include sessions that were provided."""
         messages=[{"role": "user", "content": prompt}]
     )
     raw = response.content[0].text
-    clean = raw.replace("```json", "").replace("```", "").strip()
-    return json.loads(clean)
+    return parse_json_response(raw)
 
 def get_spot_type(spot_name: str) -> str:
     """Use Claude to determine surf spot type."""
@@ -613,8 +625,7 @@ If you don't know this specific spot, provide best estimates based on its locati
     )
 
     raw = response.content[0].text
-    clean = raw.replace("```json", "").replace("```", "").strip()
-    result = json.loads(clean)
+    result = parse_json_response(raw)
     set_cache(cache_key, result)
     return result
 
