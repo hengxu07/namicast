@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 
 const API = process.env.REACT_APP_API_URL;
 
-const SUGGESTIONS = ['San Onofre', 'Trestles', 'Malibu', 'Huntington Beach', 'Rincon'];
+const SUGGESTIONS = ['San Onofre', 'Doheny State Beach', 'Trestles', 'Malibu', 'Huntington Beach', 'Rincon'];
 
 export default function ChatInterface({ board, skill }) {
   const [input, setInput] = useState('');

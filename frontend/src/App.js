@@ -8,7 +8,14 @@ import { getScoreGradient } from './utils/scoreColor';
 
 const API = process.env.REACT_APP_API_URL;
 
-
+const SPOTS = [
+  { name: 'San Onofre', lat: 33.37, lng: -117.57 },
+  { name: 'Doheny State Beach', lat: 33.46, lng: -117.68 },
+  { name: 'Huntington Beach', lat: 33.66, lng: -118.00 },
+  { name: 'Malibu', lat: 34.04, lng: -118.68 },
+  { name: 'Trestles', lat: 33.38, lng: -117.59 },
+  { name: 'Rincon', lat: 34.37, lng: -119.47 },
+];
 
 const verdictColors = {
   Excellent: { bg: '#EAF3DE', color: '#3B6D11' },
@@ -19,6 +26,7 @@ const verdictColors = {
 
 function App() {
   const [search, setSearch] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
   const [board, setBoard] = useState(() => loadProfile().board || 'Longboard');
   const [skill, setSkill] = useState(() => loadProfile().skill || 'Beg-Intermediate');
   const [showProfile, setShowProfile] = useState(false);
@@ -199,15 +207,38 @@ function App() {
       {/* Header */}
       <div style={s.header}>
         <div style={s.logo}>波 <span style={s.logoBlue}>Namicast</span></div>
-        <div style={s.searchBar}>
-          <input
-            style={s.searchInput}
-            placeholder="Search a surf spot..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSearch()}
-          />
-          <button style={s.searchBtn} onClick={handleSearch}>Search</button>
+        <div style={{ position: 'relative', flex: 1, maxWidth: isMobile ? '100%' : '400px' }}>
+          <div style={s.searchBar}>
+            <input
+              style={s.searchInput}
+              placeholder="Search a surf spot..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setShowDropdown(true); }}
+              onFocus={() => setShowDropdown(true)}
+              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+            />
+            <button
+              onClick={() => setShowDropdown(d => !d)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: '#378ADD', padding: '0 4px' }}
+            >▾</button>
+            <button style={s.searchBtn} onClick={handleSearch}>Search</button>
+          </div>
+          {showDropdown && (
+            <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#fff', borderRadius: '12px', border: '0.5px solid #B5D4F4', boxShadow: '0 4px 16px rgba(4,44,83,0.1)', zIndex: 50, overflow: 'hidden' }}>
+              {SPOTS.filter(s => s.name.toLowerCase().includes(search.toLowerCase())).map(spot => (
+                <button
+                  key={spot.name}
+                  onMouseDown={() => { setSearch(spot.name); handleCheck(spot); setShowDropdown(false); }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 16px', background: 'none', border: 'none', fontSize: '13px', color: '#042C53', cursor: 'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#E6F1FB'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  🏄 {spot.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <button style={s.settingsBtn} onClick={() => setShowProfile(true)} title="Edit profile">
           👤
