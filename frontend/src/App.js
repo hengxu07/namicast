@@ -8,16 +8,7 @@ import { getScoreGradient } from './utils/scoreColor';
 
 const API = process.env.REACT_APP_API_URL;
 
-const SPOTS = [
-  { name: 'San Onofre', lat: 33.37, lng: -117.57 },
-  { name: 'Huntington Beach', lat: 33.66, lng: -118.00 },
-  { name: 'Malibu', lat: 34.04, lng: -118.68 },
-  { name: 'Trestles', lat: 33.38, lng: -117.59 },
-  { name: 'Rincon', lat: 34.37, lng: -119.47 },
-];
 
-const BOARDS = ['Longboard', 'Shortboard', 'Funboard'];
-const SKILLS = ['Beginner', 'Beg-Intermediate', 'Intermediate', 'Advanced'];
 
 const verdictColors = {
   Excellent: { bg: '#EAF3DE', color: '#3B6D11' },
@@ -40,7 +31,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
 
   const isMobile = useIsMobile();
-  const { favorites, toggle, isFavorite } = useFavorites();
+  const { toggle, isFavorite } = useFavorites();
 
   const s = {
     app: { background: '#E6F1FB', minHeight: '100vh', padding: isMobile ? '16px 12px' : '24px', fontFamily: 'sans-serif' },
@@ -196,9 +187,6 @@ function App() {
     setLoading(false);
   };
 
-  const filteredSpots = SPOTS.filter(s =>
-    s.name.toLowerCase().includes(search.toLowerCase())
-  );
 
   return (
     <div style={s.app}>
@@ -229,66 +217,7 @@ function App() {
         </button>
       </div>
 
-      {/* Selectors */}
-      <div style={s.selectors}>
-        {BOARDS.map(b => (
-          <button
-            key={b}
-            style={{ ...s.selector, ...(board === b ? s.selectorActive : {}) }}
-            onClick={() => setBoard(b)}
-          >
-            {b}
-          </button>
-        ))}
-        <div style={s.divider} />
-        {SKILLS.map(sk => (
-          <button
-            key={sk}
-            style={{ ...s.selector, ...(skill === sk ? s.selectorActive : {}) }}
-            onClick={() => setSkill(sk)}
-          >
-            {sk}
-          </button>
-        ))}
-      </div>
       <ChatInterface board={board} skill={skill} />
-
-
-      {/* Favorite spots */}
-      {favorites.length > 0 && (
-        <div style={s.spotSection}>
-          <div style={s.spotSectionLabel}>⭐ Favorites</div>
-          <div style={s.spotList}>
-            {favorites.map(spot => (
-              <button
-                key={spot.name}
-                style={{ ...s.spotBtn, ...(selectedSpot?.name === spot.name ? s.spotBtnActive : {}) }}
-                onClick={() => handleCheck(spot)}
-                disabled={loading}
-              >
-                ⭐ {spot.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Default spots */}
-      <div style={s.spotSection}>
-        {favorites.length > 0 && <div style={s.spotSectionLabel}>📍 Popular spots</div>}
-        <div style={s.spotList}>
-          {filteredSpots.map(spot => (
-            <button
-              key={spot.name}
-              style={{ ...s.spotBtn, ...(selectedSpot?.name === spot.name ? s.spotBtnActive : {}) }}
-              onClick={() => handleCheck(spot)}
-              disabled={loading}
-            >
-              🏄 {spot.name}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {showSettings && (
         <div style={s.settingsPanel}>

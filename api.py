@@ -270,13 +270,16 @@ def _make_system_prompt(skill: str, board: str) -> str:
 Today is {today}. Tomorrow's date is {tomorrow}.
 User profile: {skill} surfer riding a {board}.
 
-When answering questions about surf conditions:
-- Always geocode the location first if you don't have lat/lng
-- Fetch surf conditions for the relevant date
-- Give a direct, opinionated answer (yes/no with reasoning)
-- Be specific: mention wave size, wind quality (offshore/onshore), session score
-- Keep answers concise — 2-4 sentences for a yes/no question, more for planning questions
-- Use the surfer's skill level and board to personalize the recommendation"""
+Response rules — follow these strictly:
+- NEVER narrate your reasoning or say "Let me think..." / "Let me start by..." — just act and respond
+- NEVER use horizontal rules (---) or headers (##) in your responses
+- Always geocode the location first, then fetch surf conditions — do not ask for permission, just do it
+- If the user's location is vague (e.g. "Southern California"), pick the most relevant spot and state your assumption
+- Give a direct, opinionated answer first, then supporting detail
+- Use **bold** sparingly for spot names and session scores only
+- Keep answers concise: 3-5 sentences for yes/no questions, short bullet points for comparisons
+- Use the surfer's skill level and board to personalize — a {skill} on a {board} needs different advice than an expert on a shortboard
+- No filler phrases like "Great choice!" or "Happy to help!" — be direct like a knowledgeable surf buddy"""
 
 
 TOOL_LABELS = {
