@@ -3,6 +3,7 @@ import axios from 'axios';
 import ChatInterface from './components/ChatInterface';
 import DailyForecast from './components/DailyForecast';
 import WeeklyForecast from './components/WeeklyForecast';
+import ProfileModal, { loadProfile } from './components/ProfileModal';
 import { getScoreGradient } from './utils/scoreColor';
 
 const API = process.env.REACT_APP_API_URL;
@@ -27,8 +28,9 @@ const verdictColors = {
 
 function App() {
   const [search, setSearch] = useState('');
-  const [board, setBoard] = useState('Longboard');
-  const [skill, setSkill] = useState('Intermediate');
+  const [board, setBoard] = useState(() => loadProfile().board || 'Longboard');
+  const [skill, setSkill] = useState(() => loadProfile().skill || 'Beg-Intermediate');
+  const [showProfile, setShowProfile] = useState(false);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -200,6 +202,12 @@ function App() {
 
   return (
     <div style={s.app}>
+      {showProfile && (
+        <ProfileModal
+          onClose={() => setShowProfile(false)}
+          onSave={p => { setBoard(p.board); setSkill(p.skill); }}
+        />
+      )}
       {/* Header */}
       <div style={s.header}>
         <div style={s.logo}>波 <span style={s.logoBlue}>Namicast</span></div>
@@ -213,6 +221,9 @@ function App() {
           />
           <button style={s.searchBtn} onClick={handleSearch}>Search</button>
         </div>
+        <button style={s.settingsBtn} onClick={() => setShowProfile(true)} title="Edit profile">
+          👤
+        </button>
         <button style={s.settingsBtn} onClick={() => setShowSettings(!showSettings)}>
           ⚙️
         </button>

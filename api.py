@@ -1,4 +1,6 @@
 import os
+import uuid
+import asyncio
 import httpx
 import anthropic
 import json
@@ -7,6 +9,7 @@ import random
 from collections import defaultdict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
 from typing import Optional
@@ -31,7 +34,8 @@ class ChatRequest(BaseModel):
     message: str
     board: str = "longboard"
     skill: str = "intermediate"
-    history: list[ChatMessage] = []
+    session_id: str | None = None
+    history: list[ChatMessage] = []  # legacy fallback
 
 AGENT_TOOLS = [
     {
@@ -258,6 +262,90 @@ When answering questions about surf conditions:
 
     return {"reply": "Sorry, I couldn't complete that request.", "history": messages}
 
+
+def _make_system_prompt(skill: str, board: str) -> str:
+    today = datetime.now(timezone.utc).strftime("%A, %B %d, %Y")
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+    return f"""You are Namicast, an expert AI surf coach with access to real-time surf data.
+Today is {today}. Tomorrow's date is {tomorrow}.
+User profile: {skill} surfer riding a {board}.
+
+When answering questions about surf conditions:
+- Always geocode the location first if you don't have lat/lng
+- Fetch surf conditions for the relevant date
+- Give a direct, opinionated answer (yes/no with reasoning)
+- Be specific: mention wave size, wind quality (offshore/onshore), session score
+- Keep answers concise — 2-4 sentences for a yes/no question, more for planning questions
+- Use the surfer's skill level and board to personalize the recommendation"""
+
+
+TOOL_LABELS = {
+    "geocode_location": "Finding location...",
+    "get_surf_conditions": "Checking surf data...",
+    "get_spot_info": "Loading spot info...",
+}
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    async def generate():
+        session_id = request.session_id or str(uuid.uuid4())
+        messages = list(_chat_sessions.get(session_id, []))
+        messages.append({"role": "user", "content": request.message})
+
+        yield f"data: {json.dumps({'type': 'session', 'session_id': session_id})}\n\n"
+
+        system = _make_system_prompt(request.skill, request.board)
+
+        for _ in range(5):
+            try:
+                async with async_anthropic_client.messages.stream(
+                    model="claude-sonnet-4-6",
+                    max_tokens=1024,
+                    system=system,
+                    tools=AGENT_TOOLS,
+                    messages=messages,
+                ) as stream:
+                    async for text in stream.text_stream:
+                        yield f"data: {json.dumps({'type': 'text', 'delta': text})}\n\n"
+                    final = await stream.get_final_message()
+            except anthropic.APIStatusError as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Service temporarily busy. Please try again.'})}\n\n"
+                return
+
+            serialized = serialize_content(final.content)
+
+            if final.stop_reason == "end_turn":
+                messages.append({"role": "assistant", "content": serialized})
+                _chat_sessions[session_id] = messages[-40:]
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
+            if final.stop_reason == "tool_use":
+                messages.append({"role": "assistant", "content": serialized})
+                tool_results = []
+                for block in serialized:
+                    if block["type"] == "tool_use":
+                        label = TOOL_LABELS.get(block["name"], "Working...")
+                        yield f"data: {json.dumps({'type': 'tool_start', 'label': label})}\n\n"
+                        result = await execute_agent_tool(block["name"], block["input"], request.board, request.skill)
+                        yield f"data: {json.dumps({'type': 'tool_done'})}\n\n"
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block["id"],
+                            "content": json.dumps(result),
+                        })
+                messages.append({"role": "user", "content": tool_results})
+
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
 logger = logging.getLogger(__name__)
 
 # Simple in-memory cache
@@ -282,6 +370,10 @@ def set_cache(key: str, data):
 STORMGLASS_KEY = os.environ["STORMGLASS_KEY"]
 ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"]
 anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+async_anthropic_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_KEY)
+
+# Multi-turn chat sessions: session_id -> list of messages (capped at 40)
+_chat_sessions: dict[str, list] = {}
 
 def meters_to_feet(meters: float) -> float:
     return round(meters * 3.28084, 1)
