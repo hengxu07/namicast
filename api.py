@@ -170,10 +170,8 @@ async def execute_agent_tool(tool_name: str, tool_input: dict, board: str, skill
                 "tideHeight": round(get_avg(s_hours, "seaLevel"), 1),
             })
 
-        scored = analyze_sessions_batch(sessions_input, board, skill) if sessions_input else []
-        score_map = {s["name"]: s for s in scored}
         for s in sessions_input:
-            s.update(score_map.get(s["name"], {"score": 5, "verdict": "Fair"}))
+            s.update(simple_score(s["waveHeight"], s["windSpeed"], s["wavePeriod"]))
 
         # Use cached spot type; default to beach break rather than blocking on a Claude call
         spot_type = get_cached(cache_key + "_spot_type") or "beach break"

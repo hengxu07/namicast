@@ -1,65 +1,52 @@
-import { getScoreGradient } from '../utils/scoreColor';
+import { getScoreGradient, getScoreColor } from '../utils/scoreColor';
 
-function DailyForecast({ forecasts, convert }) {
-  if (!forecasts || forecasts.length === 0) return null;
+const SESSION_ICONS = { 'Dawn patrol': '🌅', 'Morning': '☀️', 'Afternoon': '🌤', 'Evening': '🌇' };
 
-  const sessionIcons = {
-    'Dawn patrol': '🌅',
-    'Morning': '☀️',
-    'Afternoon': '🌤',
-    'Evening': '🌇',
-  };
-
-  const verdictColors = {
-    Excellent: { bg: '#EAF3DE', color: '#3B6D11' },
-    Good: { bg: '#E1F5EE', color: '#0F6E56' },
-    Fair: { bg: '#FAEEDA', color: '#854F0B' },
-    Poor: { bg: '#FCEBEB', color: '#A32D2D' },
-  };
+export default function DailyForecast({ forecasts, convert }) {
+  if (!forecasts?.length) return null;
 
   return (
-    <div style={s.container}>
-      <div style={s.title}>Today's sessions</div>
-      <div style={s.grid}>
+    <div>
+      <div className="text-white font-medium text-sm mb-3">Today's sessions</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {forecasts.map((session, i) => {
           const scoreColor = getScoreGradient(session.score);
+          const { bg, text } = getScoreColor(session.score);
           return (
-            <div key={i} style={{
-              ...s.card,
-              ...(session.best ? s.cardBest : {}),
-              borderLeft: `4px solid ${scoreColor}`, // Color-coded left border
-            }}>
-              {session.best && <div style={s.bestBadge}>Best</div>}
-              <div style={s.sessionName}>
-                {sessionIcons[session.name] || '🌊'} {session.name}
+            <div
+              key={i}
+              className="glass rounded-xl p-4 relative overflow-hidden"
+              style={{ borderLeft: `3px solid ${scoreColor}` }}
+            >
+              {session.best && (
+                <div className="absolute -top-px left-1/2 -translate-x-1/2 bg-sky-500 text-white text-[10px] font-medium px-2.5 py-0.5 rounded-b-lg">
+                  Best
+                </div>
+              )}
+              <div className="text-white text-xs font-medium mb-0.5">
+                {SESSION_ICONS[session.name] || '🌊'} {session.name}
               </div>
-              <div style={s.sessionTime}>{session.time}</div>
+              <div className="text-slate-500 text-[10px] mb-3">{session.time}</div>
 
-              {/* Score number color matches the gradient */}
-              <div style={{ ...s.score, color: scoreColor }}>
-                {session.score}<span style={s.scoreMax}>/10</span>
+              <div className="text-3xl font-bold leading-none mb-1.5" style={{ color: scoreColor }}>
+                {session.score}<span className="text-sm font-normal text-slate-500">/10</span>
               </div>
-
-              <div style={{
-                ...s.verdict,
-                background: verdictColors[session.verdict]?.bg,
-                color: verdictColors[session.verdict]?.color,
-              }}>
+              <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium mb-3"
+                    style={{ background: bg, color: text }}>
                 {session.verdict}
-              </div>
-              <div style={s.metrics}>
-                <div style={s.metricRow}>
-                  <span style={s.metricLabel}>Waves</span>
-                  <span style={s.metricValue}>{convert.height(session.waveHeight)}</span>
-                </div>
-                <div style={s.metricRow}>
-                  <span style={s.metricLabel}>Wind</span>
-                  <span style={s.metricValue}>{convert.speed(session.windSpeed)} {session.windDirection}</span>
-                </div>
-                <div style={s.metricRow}>
-                  <span style={s.metricLabel}>Period</span>
-                  <span style={s.metricValue}>{session.wavePeriod}s</span>
-                </div>
+              </span>
+
+              <div className="border-t border-white/5 pt-2.5 space-y-1.5">
+                {[
+                  { label: 'Waves',  value: convert.height(session.waveHeight) },
+                  { label: 'Wind',   value: `${convert.speed(session.windSpeed)} ${session.windDirection}` },
+                  { label: 'Period', value: `${session.wavePeriod}s` },
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex justify-between">
+                    <span className="text-slate-500 text-[10px]">{label}</span>
+                    <span className="text-slate-200 text-[10px] font-medium">{value}</span>
+                  </div>
+                ))}
               </div>
             </div>
           );
@@ -68,23 +55,3 @@ function DailyForecast({ forecasts, convert }) {
     </div>
   );
 }
-
-const s = {
-  container: { marginBottom: '16px' },
-  title: { fontSize: '14px', fontWeight: '500', color: '#042C53', marginBottom: '12px' },
- grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' },
-card: { background: '#fff', borderRadius: '12px', padding: '14px 12px', border: '0.5px solid #B5D4F4', position: 'relative', overflow: 'visible' },
-  cardBest: { border: '2px solid #378ADD' },
-  bestBadge: { position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: '#378ADD', color: '#fff', fontSize: '11px', padding: '2px 10px', borderRadius: '20px' },
-  sessionName: { fontSize: '13px', fontWeight: '500', color: '#042C53', marginBottom: '2px' },
-  sessionTime: { fontSize: '11px', color: '#378ADD', marginBottom: '10px' },
-  score: { fontSize: '32px', fontWeight: '500', lineHeight: '1', marginBottom: '6px' }, // color removed — set dynamically
-  scoreMax: { fontSize: '14px', color: '#378ADD' },
-  verdict: { display: 'inline-block', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '500', marginBottom: '12px' },
-  metrics: { borderTop: '0.5px solid #E6F1FB', paddingTop: '10px' },
-  metricRow: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' },
-  metricLabel: { fontSize: '11px', color: '#378ADD' },
-  metricValue: { fontSize: '11px', color: '#042C53', fontWeight: '500' },
-};
-
-export default DailyForecast;

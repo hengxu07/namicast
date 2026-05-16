@@ -1,492 +1,352 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import axios from 'axios';
 import ChatInterface from './components/ChatInterface';
 import DailyForecast from './components/DailyForecast';
 import WeeklyForecast from './components/WeeklyForecast';
 import ProfileModal, { loadProfile } from './components/ProfileModal';
-import { getScoreGradient } from './utils/scoreColor';
+import { getScoreGradient, getScoreColor } from './utils/scoreColor';
 
 const API = process.env.REACT_APP_API_URL;
 
 const SPOTS = [
-  { name: 'San Onofre', lat: 33.37, lng: -117.57 },
+  { name: 'San Onofre',         lat: 33.37, lng: -117.57 },
   { name: 'Doheny State Beach', lat: 33.46, lng: -117.68 },
-  { name: 'Huntington Beach', lat: 33.66, lng: -118.00 },
-  { name: 'Malibu', lat: 34.04, lng: -118.68 },
-  { name: 'Trestles', lat: 33.38, lng: -117.59 },
-  { name: 'Rincon', lat: 34.37, lng: -119.47 },
+  { name: 'Huntington Beach',   lat: 33.66, lng: -118.00 },
+  { name: 'Malibu',             lat: 34.04, lng: -118.68 },
+  { name: 'Trestles',           lat: 33.38, lng: -117.59 },
+  { name: 'Rincon',             lat: 34.37, lng: -119.47 },
 ];
 
-const verdictColors = {
-  Excellent: { bg: '#EAF3DE', color: '#3B6D11' },
-  Good: { bg: '#E1F5EE', color: '#0F6E56' },
-  Fair: { bg: '#FAEEDA', color: '#854F0B' },
-  Poor: { bg: '#FCEBEB', color: '#A32D2D' },
-};
-
 function App() {
-  const [search, setSearch] = useState('');
+  const [search, setSearch]           = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
-  const [board, setBoard] = useState(() => loadProfile().board || 'Longboard');
-  const [skill, setSkill] = useState(() => loadProfile().skill || 'Beg-Intermediate');
+  const [board, setBoard]             = useState(() => loadProfile().board || 'Longboard');
+  const [skill, setSkill]             = useState(() => loadProfile().skill || 'Beg-Intermediate');
   const [showProfile, setShowProfile] = useState(false);
-  const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [result, setResult]           = useState(null);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState('');
   const [selectedSpot, setSelectedSpot] = useState(null);
-
-  const [units, setUnits] = useState({ height: 'ft', temp: 'F', speed: 'mph' });
+  const [units, setUnits]             = useState({ height: 'ft', temp: 'F', speed: 'mph' });
   const [showSettings, setShowSettings] = useState(false);
 
-  const isMobile = useIsMobile();
   const { toggle, isFavorite } = useFavorites();
-
-  const s = {
-    app: { background: '#E6F1FB', minHeight: '100vh', padding: isMobile ? '16px 12px' : '24px', fontFamily: 'sans-serif' },
-    analysisTag: { fontSize: '13px', color: '#185FA5', background: '#E6F1FB', padding: '8px 12px', borderRadius: '8px', marginBottom: '8px', lineHeight: '1.5' },
-
-    // Header stacks vertically on mobile
-    header: { display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: '12px', marginBottom: '16px' },
-    logo: { fontSize: '22px', fontWeight: '500', color: '#042C53', whiteSpace: 'nowrap' },
-    logoBlue: { color: '#378ADD' },
-
-    // Search bar takes full width on mobile
-    searchBar: { flex: 1, maxWidth: isMobile ? '100%' : '400px', background: '#fff', borderRadius: '12px', padding: '8px 14px', border: '0.5px solid #B5D4F4', display: 'flex', alignItems: 'center', gap: '8px' },
-    searchBtn: { padding: '6px 14px', background: '#378ADD', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap' },
-    searchInput: { border: 'none', outline: 'none', fontSize: '14px', color: '#042C53', width: '100%', background: 'transparent' },
-
-    // Settings button aligns right on mobile
-    settingsBtn: { padding: '8px', borderRadius: '8px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '16px', alignSelf: isMobile ? 'flex-end' : 'auto' },
-
-    selectors: { display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' },
-    selector: { padding: '6px 14px', borderRadius: '20px', fontSize: '12px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', color: '#185FA5' },
-    selectorActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
-    divider: { width: '1px', height: '20px', background: '#B5D4F4' },
-
-    spotList: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' },
-    spotBtn: { padding: '8px 16px', borderRadius: '10px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '13px', color: '#185FA5' },
-    spotBtnActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
-
-    settingsPanel: { background: '#fff', borderRadius: '12px', padding: '16px', marginBottom: '16px', border: '0.5px solid #B5D4F4' },
-    settingsRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' },
-    settingsLabel: { fontSize: '13px', color: '#185FA5' },
-    settingsBtns: { display: 'flex', gap: '6px' },
-    unitBtn: { padding: '4px 10px', borderRadius: '6px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', fontSize: '12px', color: '#185FA5' },
-    unitBtnActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
-
-    error: { color: '#A32D2D', fontSize: '13px', marginBottom: '12px' },
-    loading: { textAlign: 'center', padding: '40px 0' },
-
-    // Score card tighter padding on mobile
-    scoreCard: { background: '#fff', borderRadius: '16px', padding: isMobile ? '16px' : '24px', marginBottom: '16px', border: '0.5px solid #B5D4F4' },
-    scoreRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' },
-    scoreBig: { fontSize: isMobile ? '40px' : '48px', fontWeight: '500', lineHeight: '1' }, // color set dynamically
-    scoreLabel: { fontSize: '13px', color: '#378ADD', marginTop: '4px' },
-    verdict: { padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: '500' },
-    summary: { fontSize: '13px', color: '#185FA5', lineHeight: '1.6', marginBottom: '16px' },
-
-    // Metrics: 2 columns on mobile instead of auto-fit
-    metrics: { display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px', marginBottom: '16px' },
-    metric: { background: '#E6F1FB', borderRadius: '10px', padding: '12px' },
-    metricLabel: { fontSize: '11px', color: '#378ADD', marginBottom: '4px' },
-    metricValue: { fontSize: '18px', fontWeight: '500', color: '#042C53' },
-    metricUnit: { fontSize: '11px', color: '#185FA5' },
-
-    spotInfoBar: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px', paddingBottom: '16px', borderBottom: '0.5px solid #E6F1FB' },
-    spotInfoItem: { fontSize: '12px', color: '#185FA5', background: '#E6F1FB', padding: '4px 10px', borderRadius: '20px' },
-
-    spotGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginTop: '12px' },
-    spotGridItem: { background: '#E6F1FB', borderRadius: '8px', padding: '10px' },
-    spotGridValue: { fontSize: '13px', color: '#042C53', fontWeight: '500', marginTop: '4px' },
-
-    spotSection: { marginBottom: '8px' },
-    spotSectionLabel: { fontSize: '11px', color: '#378ADD', fontWeight: '500', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' },
-    favBtn: { padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: '500', cursor: 'pointer', marginBottom: '16px' },
-
-    swellSection: { marginTop: '16px', paddingTop: '16px', borderTop: '0.5px solid #B5D4F4' },
-    swellRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid #E6F1FB' },
-    swellType: { fontSize: '12px', color: '#378ADD', fontWeight: '500' },
-    swellData: { fontSize: '13px', color: '#042C53', fontWeight: '500' },
-
-    tags: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '16px' },
-    tagBlue: { background: '#E6F1FB', color: '#185FA5', padding: '6px 12px', borderRadius: '8px', fontSize: '12px' },
-    tagGreen: { background: '#EAF3DE', color: '#3B6D11', padding: '6px 12px', borderRadius: '8px', fontSize: '12px' },
-
-    // tipsCard gets bottom margin so cards don't stick together
-    tipsCard: { background: '#fff', borderRadius: '16px', padding: isMobile ? '16px' : '20px', border: '0.5px solid #B5D4F4', marginBottom: '16px' },
-    tipsTitle: { fontSize: '14px', fontWeight: '500', color: '#042C53', marginBottom: '12px' },
-    tip: { display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'flex-start', fontSize: '13px', color: '#185FA5', lineHeight: '1.5' },
-    tipDot: { width: '6px', height: '6px', borderRadius: '50%', background: '#378ADD', marginTop: '5px', flexShrink: 0 },
-  };
+  const searchRef = useRef(null);
 
   const convert = {
-    height: (val) => units.height === 'ft' ? `${val} ft` : `${(val / 3.28084).toFixed(1)} m`,
-    temp: (val) => units.temp === 'F' ? `${val}°F` : `${((val - 32) * 5 / 9).toFixed(1)}°C`,
-    speed: (val) => units.speed === 'mph' ? `${val} mph` : `${(val * 1.60934).toFixed(1)} km/h`,
+    height: v => units.height === 'ft' ? `${v} ft` : `${(v / 3.28084).toFixed(1)} m`,
+    temp:   v => units.temp   === 'F'  ? `${v}°F`  : `${((v-32)*5/9).toFixed(1)}°C`,
+    speed:  v => units.speed  === 'mph'? `${v} mph` : `${(v*1.60934).toFixed(1)} km/h`,
   };
 
   const handleSearch = async () => {
     if (!search.trim()) return;
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
       const res = await axios.get('https://nominatim.openstreetmap.org/search', {
-        params: {
-          q: search,
-          format: 'json',
-          limit: 1,
-        },
-        headers: { 'Accept-Language': 'en' }
+        params: { q: search, format: 'json', limit: 1 },
+        headers: { 'Accept-Language': 'en' },
       });
-      if (res.data.length === 0) {
-        setError('Location not found. Try a different search.');
-        setLoading(false);
-        return;
-      }
-      const place = res.data[0];
-      const spot = {
-        name: place.display_name.split(',')[0],
-        lat: parseFloat(place.lat),
-        lng: parseFloat(place.lon),
-      };
-      await handleCheck(spot);
-    } catch (err) {
-      setError('Search failed. Please try again.');
-      setLoading(false);
-    }
+      if (!res.data.length) { setError('Location not found.'); setLoading(false); return; }
+      const p = res.data[0];
+      await handleCheck({ name: p.display_name.split(',')[0], lat: parseFloat(p.lat), lng: parseFloat(p.lon) });
+    } catch { setError('Search failed. Please try again.'); setLoading(false); }
   };
 
   const handleCheck = async (spot) => {
-    setLoading(true);
-    setError('');
-    setResult(null);
+    setLoading(true); setError(''); setResult(null);
     try {
       const [forecastRes, spotInfoRes, dailyRes] = await Promise.all([
-        axios.get(`${API}/forecast`, {
-          params: {
-            lat: spot.lat,
-            lng: spot.lng,
-            board: board.toLowerCase(),
-            skill: skill.toLowerCase(),
-            spot_name: spot.name,
-          }
-        }),
-        axios.get(`${API}/spot-info`, {
-          params: { spot_name: spot.name }
-        }),
-        axios.get(`${API}/forecast/daily`, {
-          params: {
-            lat: spot.lat,
-            lng: spot.lng,
-            board: board.toLowerCase(),
-            skill: skill.toLowerCase(),
-          }
-        })
+        axios.get(`${API}/forecast`,       { params: { lat: spot.lat, lng: spot.lng, board: board.toLowerCase(), skill: skill.toLowerCase(), spot_name: spot.name } }),
+        axios.get(`${API}/spot-info`,      { params: { spot_name: spot.name } }),
+        axios.get(`${API}/forecast/daily`, { params: { lat: spot.lat, lng: spot.lng, board: board.toLowerCase(), skill: skill.toLowerCase(), spot_name: spot.name } }),
       ]);
-      setResult({
-        ...forecastRes.data,
-        spotInfo: spotInfoRes.data,
-        daily: dailyRes.data.daily,
-      });
+      setResult({ ...forecastRes.data, spotInfo: spotInfoRes.data, daily: dailyRes.data.daily });
       setSelectedSpot(spot);
-    } catch (err) {
-      setError('Failed to fetch forecast. Please try again.');
-    }
+    } catch { setError('Failed to fetch forecast. Please try again.'); }
     setLoading(false);
   };
 
+  const scoreColor   = result ? getScoreGradient(result.analysis.score) : null;
+  const scorePill    = result ? getScoreColor(result.analysis.score) : null;
 
   return (
-    <div style={s.app}>
+    <div className="min-h-screen bg-[#020817] text-white">
       {showProfile && (
-        <ProfileModal
-          onClose={() => setShowProfile(false)}
-          onSave={p => { setBoard(p.board); setSkill(p.skill); }}
-        />
-      )}
-      {/* Header */}
-      <div style={s.header}>
-        <div style={s.logo}>波 <span style={s.logoBlue}>Namicast</span></div>
-        <div style={{ position: 'relative', flex: 1, maxWidth: isMobile ? '100%' : '400px' }}>
-          <div style={s.searchBar}>
-            <input
-              style={s.searchInput}
-              placeholder="Search a surf spot..."
-              value={search}
-              onChange={e => { setSearch(e.target.value); setShowDropdown(true); }}
-              onFocus={() => setShowDropdown(true)}
-              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            />
-            <button
-              onClick={() => setShowDropdown(d => !d)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: '#378ADD', padding: '0 4px' }}
-            >▾</button>
-            <button style={s.searchBtn} onClick={handleSearch}>Search</button>
-          </div>
-          {showDropdown && (
-            <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#fff', borderRadius: '12px', border: '0.5px solid #B5D4F4', boxShadow: '0 4px 16px rgba(4,44,83,0.1)', zIndex: 50, overflow: 'hidden' }}>
-              {SPOTS.filter(s => s.name.toLowerCase().includes(search.toLowerCase())).map(spot => (
-                <button
-                  key={spot.name}
-                  onMouseDown={() => { setSearch(spot.name); handleCheck(spot); setShowDropdown(false); }}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 16px', background: 'none', border: 'none', fontSize: '13px', color: '#042C53', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#E6F1FB'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                >
-                  🏄 {spot.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <button style={s.settingsBtn} onClick={() => setShowProfile(true)} title="Edit profile">
-          👤
-        </button>
-        <button style={s.settingsBtn} onClick={() => setShowSettings(!showSettings)}>
-          ⚙️
-        </button>
-      </div>
-
-      <ChatInterface board={board} skill={skill} />
-
-      {showSettings && (
-        <div style={s.settingsPanel}>
-          <div style={s.settingsRow}>
-            <span style={s.settingsLabel}>Wave height</span>
-            <div style={s.settingsBtns}>
-              {['ft', 'm'].map(u => (
-                <button
-                  key={u}
-                  style={{ ...s.unitBtn, ...(units.height === u ? s.unitBtnActive : {}) }}
-                  onClick={() => setUnits({ ...units, height: u })}
-                >{u}</button>
-              ))}
-            </div>
-          </div>
-          <div style={s.settingsRow}>
-            <span style={s.settingsLabel}>Temperature</span>
-            <div style={s.settingsBtns}>
-              {['F', 'C'].map(u => (
-                <button
-                  key={u}
-                  style={{ ...s.unitBtn, ...(units.temp === u ? s.unitBtnActive : {}) }}
-                  onClick={() => setUnits({ ...units, temp: u })}
-                >°{u}</button>
-              ))}
-            </div>
-          </div>
-          <div style={s.settingsRow}>
-            <span style={s.settingsLabel}>Wind speed</span>
-            <div style={s.settingsBtns}>
-              {['mph', 'km/h', 'm/s'].map(u => (
-                <button
-                  key={u}
-                  style={{ ...s.unitBtn, ...(units.speed === u ? s.unitBtnActive : {}) }}
-                  onClick={() => setUnits({ ...units, speed: u })}
-                >{u}</button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <ProfileModal onClose={() => setShowProfile(false)} onSave={p => { setBoard(p.board); setSkill(p.skill); }} />
       )}
 
+      {/* ── Header ── */}
+      <header className="sticky top-0 z-40" style={{ background: 'rgba(7,20,40,0.85)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(56,189,248,0.1)' }}>
+        <div className="max-w-2xl mx-auto flex items-center gap-3 px-4 py-3">
+          {/* Logo */}
+          <div className="text-lg font-semibold tracking-tight shrink-0">
+            <span className="text-slate-500">波</span>{' '}
+            <span style={{ background: 'linear-gradient(90deg, #38bdf8, #818cf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Namicast</span>
+          </div>
 
-      {error && <p style={s.error}>{error}</p>}
-
-      {loading && (
-        <div style={s.loading}>
-          <p style={{ color: '#378ADD', fontSize: '14px' }}>🌊 Checking conditions...</p>
-        </div>
-      )}
-
-      {/* Result */}
-      {result && !loading && (
-        <div>
-          {/* Score card */}
-          <div style={s.scoreCard}>
-            {result.spotInfo && (
-              <div style={s.spotInfoBar}>
-                <span style={s.spotInfoItem}>🏄 {result.spotInfo.type}</span>
-                <span style={s.spotInfoItem}>📅 Best: {result.spotInfo.best_season}</span>
-                <span style={s.spotInfoItem}>🎯 {result.spotInfo.difficulty}</span>
-                <span style={s.spotInfoItem}>⚠️ {result.spotInfo.hazards}</span>
-              </div>
-            )}
-            {/* Favorite toggle button */}
-            {selectedSpot && (
+          {/* Search */}
+          <div className="flex-1" ref={searchRef}>
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2 glass">
+              <input
+                className="flex-1 bg-transparent text-sm text-white placeholder-slate-500 outline-none min-w-0"
+                placeholder="Search a surf spot..."
+                value={search}
+                onChange={e => { setSearch(e.target.value); setShowDropdown(true); }}
+                onFocus={() => setShowDropdown(true)}
+                onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              />
               <button
-                style={{
-                  ...s.favBtn,
-                  background: isFavorite(selectedSpot.name) ? '#FFF8E1' : '#fff',
-                  color: isFavorite(selectedSpot.name) ? '#F59E0B' : '#378ADD',
-                  border: `0.5px solid ${isFavorite(selectedSpot.name) ? '#F59E0B' : '#B5D4F4'}`,
-                }}
-                onClick={() => toggle(selectedSpot)}
-              >
-                {isFavorite(selectedSpot.name) ? '⭐ Saved' : '☆ Save spot'}
-              </button>
-            )}
-            <div style={s.scoreRow}>
-              <div>
-                <div style={{ ...s.scoreBig, color: getScoreGradient(result.analysis.score) }}>
-                  {result.analysis.score}
-                </div>
-                <div style={s.scoreLabel}>out of 10</div>
-              </div>
-              <div style={{
-                ...s.verdict,
-                background: verdictColors[result.analysis.verdict]?.bg || '#f0f0f0',
-                color: verdictColors[result.analysis.verdict]?.color || '#333',
-              }}>
-                {result.analysis.verdict} conditions
-              </div>
-            </div>
-
-            <p style={s.summary}>{result.analysis.summary}</p>
-
-            {result.analysis.wind_analysis && (
-              <div style={s.analysisTag}>
-                💨 {result.analysis.wind_analysis}
-              </div>
-            )}
-            {result.analysis.spot_analysis && (
-              <div style={s.analysisTag}>
-                🌊 {result.analysis.spot_analysis}
-              </div>
-            )}
-
-
-            <div style={s.metrics}>
-              <div style={s.metric}>
-                <div style={s.metricLabel}>Wave height</div>
-                <div style={s.metricValue}>{convert.height(result.conditions.waveHeight)}</div>
-              </div>
-              <div style={s.metric}>
-                <div style={s.metricLabel}>Period</div>
-                <div style={s.metricValue}>{result.conditions.wavePeriod} <span style={s.metricUnit}>sec</span></div>
-              </div>
-              <div style={s.metric}>
-                <div style={s.metricLabel}>Wind</div>
-                <div style={s.metricValue}>{convert.speed(result.conditions.windSpeed)} <span style={s.metricUnit}>{result.conditions.windDirection}</span></div>
-              </div>
-              <div style={s.metric}>
-                <div style={s.metricLabel}>Water temp</div>
-                <div style={s.metricValue}>{convert.temp(result.conditions.waterTemp)}</div>
-              </div>
-              {result.conditions.tideHeight !== undefined && (
-                <div style={s.metric}>
-                  <div style={s.metricLabel}>Tide</div>
-                  <div style={s.metricValue}>{result.conditions.tideHeight} <span style={s.metricUnit}>m</span></div>
-                </div>
-              )}
-            </div>
-            {result.conditions.swells && result.conditions.swells.length > 0 && (
-              <div style={s.swellSection}>
-                <div style={s.tipsTitle}>Swell breakdown</div>
-                {result.conditions.swells.map((swell, i) => (
-                  <div key={i} style={s.swellRow}>
-                    <span style={s.swellType}>{swell.type}</span>
-                    <span style={s.swellData}>{convert.height(swell.height)} @ {swell.period}s {swell.direction}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div style={s.tags}>
-              <span style={s.tagBlue}>🩱 {result.analysis.wetsuit}</span>
-              <span style={s.tagGreen}>⏰ {result.analysis.best_time}</span>
+                onClick={() => setShowDropdown(d => !d)}
+                className="text-slate-500 hover:text-slate-300 text-xs transition-colors shrink-0"
+              >▾</button>
+              <button
+                onClick={handleSearch}
+                className="px-3 py-1 text-white text-xs font-medium rounded-lg shrink-0 transition-opacity hover:opacity-90"
+              style={{ background: 'linear-gradient(135deg, #38bdf8, #818cf8)' }}
+              >Search</button>
             </div>
           </div>
 
-          {/* Tips */}
-          <div style={s.tipsCard}>
-            <div style={s.tipsTitle}>Tips for your session</div>
-            {(result.analysis.tips || []).map((tip, i) => (
-              <div key={i} style={s.tip}>
-                <div style={s.tipDot} />
-                {tip}
+          {/* Icons */}
+          <button onClick={() => setShowProfile(true)}    className="p-2 rounded-lg glass glass-hover text-slate-400 hover:text-white text-sm transition-colors shrink-0">👤</button>
+          <button onClick={() => setShowSettings(s => !s)} className="p-2 rounded-lg glass glass-hover text-slate-400 hover:text-white text-sm transition-colors shrink-0">⚙️</button>
+        </div>
+      </header>
+
+      {/* Invisible overlay — catches clicks outside the dropdown */}
+      {showDropdown && (
+        <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={() => setShowDropdown(false)} />
+      )}
+
+      {/* Dropdown — rendered outside header to escape its stacking context */}
+      {showDropdown && (() => {
+        const rect = searchRef.current?.getBoundingClientRect();
+        if (!rect) return null;
+        const filtered = SPOTS.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
+        if (!filtered.length) return null;
+        return (
+          <div
+            className="rounded-xl overflow-hidden shadow-2xl shadow-black/60"
+            style={{
+              position: 'fixed',
+              top: rect.bottom + 6,
+              left: rect.left,
+              width: rect.width,
+              zIndex: 9999,
+              background: 'rgba(7,20,40,0.97)',
+              border: '1px solid rgba(56,189,248,0.15)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+            }}
+          >
+            {filtered.map(spot => (
+              <button
+                key={spot.name}
+                onMouseDown={() => { setSearch(spot.name); handleCheck(spot); setShowDropdown(false); }}
+                className="w-full text-left px-4 py-2.5 text-sm text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
+              >
+                🏄 {spot.name}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
+
+      <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+
+        {/* ── Settings Panel ── */}
+        {showSettings && (
+          <div className="glass rounded-2xl p-4 space-y-3">
+            {[
+              { label: 'Wave height', key: 'height', opts: ['ft', 'm'] },
+              { label: 'Temperature', key: 'temp',   opts: ['F', 'C'] },
+              { label: 'Wind speed',  key: 'speed',  opts: ['mph', 'km/h', 'm/s'] },
+            ].map(({ label, key, opts }) => (
+              <div key={key} className="flex items-center justify-between">
+                <span className="text-slate-400 text-sm">{label}</span>
+                <div className="flex gap-1">
+                  {opts.map(u => (
+                    <button
+                      key={u}
+                      onClick={() => setUnits(prev => ({ ...prev, [key]: u }))}
+                      className={`chip ${units[key] === u ? 'chip-active' : 'chip-inactive'}`}
+                    >{u}</button>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
+        )}
 
-          {/* 5-Day Forecast */}
-          {result.daily && (
-            <WeeklyForecast daily={result.daily} convert={convert} />
-          )}
+        {/* ── Chat ── */}
+        <ChatInterface board={board} skill={skill} />
 
-          {/* Today's sessions */}
-          {result.forecast && (
-            <DailyForecast forecasts={result.forecast} convert={convert} />
-          )}
+        {/* ── Error / Loading ── */}
+        {error && <p className="text-red-400 text-sm">{error}</p>}
+        {loading && (
+          <div className="glass rounded-2xl p-8 text-center">
+            <p className="text-sky-400 text-sm animate-pulse">🌊 Checking conditions...</p>
+          </div>
+        )}
 
-          {/* About spot */}
-          {result.spotInfo && (
-            <div style={s.tipsCard}>
-              <div style={s.tipsTitle}>About {selectedSpot?.name}</div>
-              <p style={s.summary}>{result.spotInfo.description}</p>
-              <div style={s.spotGrid}>
-                <div style={s.spotGridItem}>
-                  <div style={s.metricLabel}>Best swell</div>
-                  <div style={s.spotGridValue}>{result.spotInfo.best_swell}</div>
+        {/* ── Results ── */}
+        {result && !loading && (
+          <>
+            {/* Score card */}
+            <div className="glass rounded-2xl p-6">
+              {/* Spot tags */}
+              {result.spotInfo && (
+                <div className="flex flex-wrap gap-2 mb-5">
+                  <span className="px-2.5 py-1 bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs rounded-full">🏄 {result.spotInfo.type}</span>
+                  <span className="px-2.5 py-1 bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs rounded-full">📅 {result.spotInfo.best_season}</span>
+                  <span className="px-2.5 py-1 bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs rounded-full">🎯 {result.spotInfo.difficulty}</span>
+                  <span className="px-2.5 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs rounded-full">⚠️ {result.spotInfo.hazards}</span>
                 </div>
-                <div style={s.spotGridItem}>
-                  <div style={s.metricLabel}>Best wind</div>
-                  <div style={s.spotGridValue}>{result.spotInfo.best_wind}</div>
+              )}
+
+              {/* Favorite + score row */}
+              <div className="flex items-start justify-between mb-5">
+                <div>
+                  <div className="text-7xl font-bold leading-none" style={{ color: scoreColor }}>
+                    {result.analysis.score}
+                  </div>
+                  <div className="text-slate-500 text-xs mt-1">out of 10</div>
                 </div>
-                <div style={s.spotGridItem}>
-                  <div style={s.metricLabel}>Best tide</div>
-                  <div style={s.spotGridValue}>{result.spotInfo.best_tide}</div>
-                </div>
-                <div style={s.spotGridItem}>
-                  <div style={s.metricLabel}>Known for</div>
-                  <div style={s.spotGridValue}>{result.spotInfo.known_for}</div>
+                <div className="flex flex-col items-end gap-2">
+                  <span className="px-4 py-1.5 rounded-full text-sm font-medium" style={{ background: scorePill?.bg, color: scorePill?.text }}>
+                    {result.analysis.verdict}
+                  </span>
+                  {selectedSpot && (
+                    <button
+                      onClick={() => toggle(selectedSpot)}
+                      className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                        isFavorite(selectedSpot.name)
+                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                          : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {isFavorite(selectedSpot.name) ? '⭐ Saved' : '☆ Save'}
+                    </button>
+                  )}
                 </div>
               </div>
-            </div>
-          )}
 
-        </div>
-      )}
+              <p className="text-slate-300 text-sm leading-relaxed mb-4">{result.analysis.summary}</p>
+
+              {/* Analysis tags */}
+              <div className="space-y-2 mb-5">
+                {result.analysis.wind_analysis && (
+                  <div className="text-sm text-slate-300 px-3 py-2.5 rounded-xl" style={{ background: 'rgba(56,189,248,0.05)' }}>
+                    💨 {result.analysis.wind_analysis}
+                  </div>
+                )}
+                {result.analysis.spot_analysis && (
+                  <div className="text-sm text-slate-300 px-3 py-2.5 rounded-xl" style={{ background: 'rgba(56,189,248,0.05)' }}>
+                    🌊 {result.analysis.spot_analysis}
+                  </div>
+                )}
+              </div>
+
+              {/* Metrics grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                {[
+                  { label: 'Wave height', value: convert.height(result.conditions.waveHeight) },
+                  { label: 'Period',      value: `${result.conditions.wavePeriod}s` },
+                  { label: 'Wind',        value: `${convert.speed(result.conditions.windSpeed)} ${result.conditions.windDirection}` },
+                  { label: 'Water temp',  value: convert.temp(result.conditions.waterTemp) },
+                  ...(result.conditions.tideHeight !== undefined ? [{ label: 'Tide', value: `${result.conditions.tideHeight}m` }] : []),
+                ].map(({ label, value }) => (
+                  <div key={label} className="metric-tile">
+                    <div className="section-label">{label}</div>
+                    <div className="text-white font-semibold text-base">{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Swells */}
+              {result.conditions.swells?.length > 0 && (
+                <div className="mb-5 pt-4 border-t border-white/5">
+                  <div className="text-slate-400 text-xs uppercase tracking-widest mb-3">Swell breakdown</div>
+                  <div className="space-y-2">
+                    {result.conditions.swells.map((swell, i) => (
+                      <div key={i} className="flex justify-between items-center py-1.5 border-b border-white/5 last:border-0">
+                        <span className="text-sky-400 text-xs font-medium">{swell.type}</span>
+                        <span className="text-white text-sm font-medium">{convert.height(swell.height)} @ {swell.period}s {swell.direction}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Tags */}
+              <div className="flex flex-wrap gap-2">
+                <span className="px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs rounded-lg">🩱 {result.analysis.wetsuit}</span>
+                <span className="px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs rounded-lg">⏰ {result.analysis.best_time}</span>
+              </div>
+            </div>
+
+            {/* Tips */}
+            <div className="glass rounded-2xl p-5">
+              <div className="text-white font-medium text-sm mb-3">Tips for your session</div>
+              <div className="space-y-2.5">
+                {(result.analysis.tips || []).map((tip, i) => (
+                  <div key={i} className="flex gap-3 text-slate-300 text-sm leading-relaxed">
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400 mt-2 shrink-0" />
+                    {tip}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 5-Day Forecast */}
+            {result.daily && <WeeklyForecast daily={result.daily} convert={convert} />}
+
+            {/* Today's sessions */}
+            {result.forecast && <DailyForecast forecasts={result.forecast} convert={convert} />}
+
+            {/* About spot */}
+            {result.spotInfo && (
+              <div className="glass rounded-2xl p-5">
+                <div className="text-white font-medium text-sm mb-2">About {selectedSpot?.name}</div>
+                <p className="text-slate-400 text-sm leading-relaxed mb-4">{result.spotInfo.description}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: 'Best swell', value: result.spotInfo.best_swell },
+                    { label: 'Best wind',  value: result.spotInfo.best_wind },
+                    { label: 'Best tide',  value: result.spotInfo.best_tide },
+                    { label: 'Known for',  value: result.spotInfo.known_for },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="metric-tile">
+                      <div className="section-label">{label}</div>
+                      <div className="text-slate-200 text-sm font-medium">{value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </main>
     </div>
   );
 }
 
-// Returns true when viewport width is below 600px
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 600);
-  useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth < 600);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, []);
-  return isMobile;
-}
-
-// Persists favorite spots to localStorage
 function useFavorites() {
   const [favorites, setFavorites] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('namicast_favorites')) || [];
-    } catch {
-      return [];
-    }
+    try { return JSON.parse(localStorage.getItem('namicast_favorites')) || []; } catch { return []; }
   });
-
   const toggle = (spot) => {
     setFavorites(prev => {
-      const exists = prev.some(s => s.name === spot.name);
-      const updated = exists
+      const updated = prev.some(s => s.name === spot.name)
         ? prev.filter(s => s.name !== spot.name)
-        : [...prev, { name: spot.name, lat: spot.lat, lng: spot.lng }];
+        : [...prev, spot];
       localStorage.setItem('namicast_favorites', JSON.stringify(updated));
       return updated;
     });
   };
-
-  const isFavorite = (spotName) => favorites.some(s => s.name === spotName);
-
-  return { favorites, toggle, isFavorite };
+  return { toggle, isFavorite: name => favorites.some(s => s.name === name) };
 }
 
 export default App;

@@ -4,75 +4,68 @@ const BOARDS = ['Longboard', 'Shortboard', 'Funboard'];
 const SKILLS = ['Beginner', 'Beg-Intermediate', 'Intermediate', 'Advanced'];
 
 export function loadProfile() {
-  try {
-    return JSON.parse(localStorage.getItem('namicast_profile')) || {};
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(localStorage.getItem('namicast_profile')) || {}; } catch { return {}; }
 }
 
 export default function ProfileModal({ onClose, onSave }) {
   const [profile, setProfile] = useState(() => ({
-    name: '',
-    board: 'Longboard',
-    skill: 'Beg-Intermediate',
-    ...loadProfile(),
+    name: '', board: 'Longboard', skill: 'Beg-Intermediate', ...loadProfile(),
   }));
 
   const save = () => {
     localStorage.setItem('namicast_profile', JSON.stringify(profile));
-    onSave(profile);
-    onClose();
-  };
-
-  const s = {
-    overlay: { position: 'fixed', inset: 0, background: 'rgba(4,44,83,0.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' },
-    modal: { background: '#fff', borderRadius: '20px', padding: '24px', width: '100%', maxWidth: '360px', boxShadow: '0 8px 32px rgba(4,44,83,0.15)' },
-    title: { fontSize: '16px', fontWeight: '600', color: '#042C53', marginBottom: '20px' },
-    label: { fontSize: '12px', color: '#378ADD', fontWeight: '500', marginBottom: '8px', display: 'block' },
-    input: { width: '100%', padding: '10px 12px', borderRadius: '10px', border: '0.5px solid #B5D4F4', fontSize: '14px', color: '#042C53', outline: 'none', boxSizing: 'border-box', marginBottom: '16px' },
-    group: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' },
-    chip: { padding: '6px 14px', borderRadius: '20px', fontSize: '12px', border: '0.5px solid #B5D4F4', background: '#fff', cursor: 'pointer', color: '#185FA5' },
-    chipActive: { background: '#378ADD', color: '#fff', borderColor: '#378ADD' },
-    actions: { display: 'flex', gap: '8px', marginTop: '8px' },
-    saveBtn: { flex: 1, padding: '10px', background: '#378ADD', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: '500', cursor: 'pointer' },
-    cancelBtn: { padding: '10px 16px', background: '#E6F1FB', color: '#185FA5', border: 'none', borderRadius: '10px', fontSize: '14px', cursor: 'pointer' },
+    onSave(profile); onClose();
   };
 
   return (
-    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={s.modal}>
-        <div style={s.title}>Your surf profile</div>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div className="glass rounded-2xl p-6 w-full max-w-sm shadow-2xl shadow-black/50">
+        <div className="text-white font-semibold text-base mb-5">Your surf profile</div>
 
-        <label style={s.label}>Name (optional)</label>
+        <label className="text-slate-500 text-xs uppercase tracking-widest mb-2 block">Name (optional)</label>
         <input
-          style={s.input}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-sky-500/50 transition-colors mb-5"
           placeholder="e.g. Heng"
           value={profile.name}
           onChange={e => setProfile(p => ({ ...p, name: e.target.value }))}
         />
 
-        <label style={s.label}>Board</label>
-        <div style={s.group}>
+        <label className="text-slate-500 text-xs uppercase tracking-widest mb-2 block">Board</label>
+        <div className="flex flex-wrap gap-2 mb-5">
           {BOARDS.map(b => (
-            <button key={b} style={{ ...s.chip, ...(profile.board === b ? s.chipActive : {}) }} onClick={() => setProfile(p => ({ ...p, board: b }))}>
-              {b}
-            </button>
+            <button
+              key={b}
+              onClick={() => setProfile(p => ({ ...p, board: b }))}
+              className={`chip ${profile.board === b ? 'chip-active' : 'chip-inactive'}`}
+            >{b}</button>
           ))}
         </div>
 
-        <label style={s.label}>Skill level</label>
-        <div style={s.group}>
+        <label className="text-slate-500 text-xs uppercase tracking-widest mb-2 block">Skill level</label>
+        <div className="flex flex-wrap gap-2 mb-6">
           {SKILLS.map(sk => (
-            <button key={sk} style={{ ...s.chip, ...(profile.skill === sk ? s.chipActive : {}) }} onClick={() => setProfile(p => ({ ...p, skill: sk }))}>
-              {sk}
-            </button>
+            <button
+              key={sk}
+              onClick={() => setProfile(p => ({ ...p, skill: sk }))}
+              className={`chip ${profile.skill === sk ? 'chip-active' : 'chip-inactive'}`}
+            >{sk}</button>
           ))}
         </div>
 
-        <div style={s.actions}>
-          <button style={s.cancelBtn} onClick={onClose}>Cancel</button>
-          <button style={s.saveBtn} onClick={save}>Save profile</button>
+        <div className="flex gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white transition-colors"
+            style={{ background: 'rgba(255,255,255,0.05)' }}
+          >Cancel</button>
+          <button
+            onClick={save}
+            className="flex-1 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-sm font-medium transition-colors"
+          >Save profile</button>
         </div>
       </div>
     </div>

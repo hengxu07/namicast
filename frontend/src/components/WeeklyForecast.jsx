@@ -1,64 +1,48 @@
 import { getScoreGradient, getScoreColor } from '../utils/scoreColor';
 
-function WeeklyForecast({ daily, convert }) {
-    if (!daily || daily.length === 0) return null;
+export default function WeeklyForecast({ daily, convert }) {
+  if (!daily?.length) return null;
 
-    return (
-        <div style={s.container}>
-            <div style={s.title}>5-Day Forecast</div>
-            <div style={s.grid}>
-                {daily.map((day, i) => {
-                    const gradientColor = getScoreGradient(day.score); // Smooth interpolated color
-                    const { bg, text } = getScoreColor(day.score);     // Verdict pill background
-                    return (
-                        <div key={i} style={{
-                            ...s.card,
-                            borderTop: `3px solid ${gradientColor}`,   // Replaces the 3-step version
-                        }}>
-                            <div style={s.weekday}>{i === 0 ? 'Today' : day.weekday}</div>
-                            <div style={s.date}>{day.date.slice(5)}</div>
+  return (
+    <div>
+      <div className="text-white font-medium text-sm mb-3">5-Day Forecast</div>
+      <div className="grid grid-cols-5 gap-2">
+        {daily.map((day, i) => {
+          const scoreColor = getScoreGradient(day.score);
+          const { bg, text } = getScoreColor(day.score);
+          return (
+            <div
+              key={i}
+              className="glass rounded-xl p-3"
+              style={{ borderTop: `3px solid ${scoreColor}` }}
+            >
+              <div className="text-white text-xs font-medium mb-0.5">{i === 0 ? 'Today' : day.weekday}</div>
+              <div className="text-slate-500 text-[10px] mb-2">{day.date.slice(5)}</div>
 
-                            {/* Score number uses smooth gradient color */}
-                            <div style={{ ...s.score, color: gradientColor }}>{day.score}</div>
+              <div className="text-2xl font-bold leading-none mb-1" style={{ color: scoreColor }}>
+                {day.score}
+              </div>
+              <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium mb-2"
+                    style={{ background: bg, color: text }}>
+                {day.verdict}
+              </span>
 
-                            {/* Verdict pill uses getScoreColor for background */}
-                            <div style={{ ...s.verdict, background: bg, color: text }}>
-                                {day.verdict}
-                            </div>
-                            <div style={s.divider} />
-                            <div style={s.metricRow}>
-                                <span style={s.metricLabel}>Waves</span>
-                                <span style={s.metricValue}>{convert.height(day.waveHeight)}</span>
-                            </div>
-                            <div style={s.metricRow}>
-                                <span style={s.metricLabel}>Wind</span>
-                                <span style={s.metricValue}>{convert.speed(day.windSpeed)} {day.windDirection}</span>
-                            </div>
-                            <div style={s.metricRow}>
-                                <span style={s.metricLabel}>Period</span>
-                                <span style={s.metricValue}>{day.wavePeriod}s</span>
-                            </div>
-                        </div>
-                    );
-                })}
+              <div className="border-t border-white/5 pt-2 space-y-1">
+                {[
+                  { label: 'Waves',  value: convert.height(day.waveHeight) },
+                  { label: 'Wind',   value: `${convert.speed(day.windSpeed)} ${day.windDirection}` },
+                  { label: 'Period', value: `${day.wavePeriod}s` },
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex justify-between">
+                    <span className="text-slate-500 text-[10px]">{label}</span>
+                    <span className="text-slate-200 text-[10px] font-medium">{value}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-        </div>
-    );
+          );
+        })}
+      </div>
+    </div>
+  );
 }
-
-const s = {
-    container: { marginBottom: '16px' },
-    title: { fontSize: '14px', fontWeight: '500', color: '#042C53', marginBottom: '12px' },
-    grid: { display: 'grid', gridTemplateColumns: 'repeat(5, minmax(120px, 1fr))', gap: '8px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' },
-    card: { background: '#fff', borderRadius: '12px', padding: '14px 12px', border: '0.5px solid #B5D4F4' },
-    weekday: { fontSize: '13px', fontWeight: '500', color: '#042C53', marginBottom: '2px' },
-    date: { fontSize: '11px', color: '#378ADD', marginBottom: '10px' },
-    score: { fontSize: '32px', fontWeight: '500', lineHeight: '1', marginBottom: '6px' }, // color removed — set dynamically
-    verdict: { display: 'inline-block', padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '500', marginBottom: '10px' },
-    divider: { height: '0.5px', background: '#E6F1FB', marginBottom: '8px' },
-    metricRow: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' },
-    metricLabel: { fontSize: '11px', color: '#378ADD' },
-    metricValue: { fontSize: '11px', color: '#042C53', fontWeight: '500' },
-};
-
-export default WeeklyForecast;
